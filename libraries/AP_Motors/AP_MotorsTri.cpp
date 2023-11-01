@@ -22,6 +22,7 @@
 
 #include "AP_MotorsTri.h"
 
+// #include <cmath>
 extern const AP_HAL::HAL& hal;
 
 // init
@@ -30,6 +31,8 @@ void AP_MotorsTri::init(motor_frame_class frame_class, motor_frame_type frame_ty
     add_motor_num(AP_MOTORS_MOT_1);
     add_motor_num(AP_MOTORS_MOT_2);
     add_motor_num(AP_MOTORS_MOT_4);
+    add_motor_num(AP_MOTORS_MOT_5);
+    add_motor_num(AP_MOTORS_MOT_6);
 
     // set update rate for the 3 motors (but not the servo on channel 7)
     set_update_rate(_speed_hz);
@@ -38,6 +41,8 @@ void AP_MotorsTri::init(motor_frame_class frame_class, motor_frame_type frame_ty
     motor_enabled[AP_MOTORS_MOT_1] = true;
     motor_enabled[AP_MOTORS_MOT_2] = true;
     motor_enabled[AP_MOTORS_MOT_4] = true;
+    motor_enabled[AP_MOTORS_MOT_5] = true;
+    motor_enabled[AP_MOTORS_MOT_6] = true;
 
 #if !APM_BUILD_TYPE(APM_BUILD_ArduPlane) // Tilt Rotors do not need a yaw servo
     // find the yaw servo
@@ -87,7 +92,9 @@ void AP_MotorsTri::set_update_rate(uint16_t speed_hz)
     uint32_t mask = 
 	    1U << AP_MOTORS_MOT_1 |
 	    1U << AP_MOTORS_MOT_2 |
-	    1U << AP_MOTORS_MOT_4;
+	    1U << AP_MOTORS_MOT_4 |
+        1U << AP_MOTORS_MOT_5 |
+        1U << AP_MOTORS_MOT_6;
     rc_set_freq(mask, _speed_hz);
 }
 
@@ -99,6 +106,8 @@ void AP_MotorsTri::output_to_motors()
             rc_write(AP_MOTORS_MOT_1, output_to_pwm(0));
             rc_write(AP_MOTORS_MOT_2, output_to_pwm(0));
             rc_write(AP_MOTORS_MOT_4, output_to_pwm(0));
+            rc_write(AP_MOTORS_MOT_5, output_to_pwm(0));
+            rc_write(AP_MOTORS_MOT_6, output_to_pwm(0));
             rc_write_angle(AP_MOTORS_CH_TRI_YAW, 0);
             break;
         case SpoolState::GROUND_IDLE:
@@ -106,9 +115,13 @@ void AP_MotorsTri::output_to_motors()
             set_actuator_with_slew(_actuator[1], actuator_spin_up_to_ground_idle());
             set_actuator_with_slew(_actuator[2], actuator_spin_up_to_ground_idle());
             set_actuator_with_slew(_actuator[4], actuator_spin_up_to_ground_idle());
+            set_actuator_with_slew(_actuator[5], actuator_spin_up_to_ground_idle());
+            set_actuator_with_slew(_actuator[6], actuator_spin_up_to_ground_idle());
             rc_write(AP_MOTORS_MOT_1, output_to_pwm(_actuator[1]));
             rc_write(AP_MOTORS_MOT_2, output_to_pwm(_actuator[2]));
             rc_write(AP_MOTORS_MOT_4, output_to_pwm(_actuator[4]));
+            rc_write(AP_MOTORS_MOT_5, output_to_pwm(_actuator[5]));
+            rc_write(AP_MOTORS_MOT_6, output_to_pwm(_actuator[6]));
             rc_write_angle(AP_MOTORS_CH_TRI_YAW, 0);
             break;
         case SpoolState::SPOOLING_UP:
@@ -118,9 +131,13 @@ void AP_MotorsTri::output_to_motors()
             set_actuator_with_slew(_actuator[1], thrust_to_actuator(_thrust_right));
             set_actuator_with_slew(_actuator[2], thrust_to_actuator(_thrust_left));
             set_actuator_with_slew(_actuator[4], thrust_to_actuator(_thrust_rear));
+            set_actuator_with_slew(_actuator[5], thrust_to_actuator(_thrust_rear_up));
+            set_actuator_with_slew(_actuator[6], thrust_to_actuator(_thrust_rear_down));
             rc_write(AP_MOTORS_MOT_1, output_to_pwm(_actuator[1]));
             rc_write(AP_MOTORS_MOT_2, output_to_pwm(_actuator[2]));
             rc_write(AP_MOTORS_MOT_4, output_to_pwm(_actuator[4]));
+            rc_write(AP_MOTORS_MOT_5, output_to_pwm(_actuator[5]));
+            rc_write(AP_MOTORS_MOT_6, output_to_pwm(_actuator[6]));
             rc_write_angle(AP_MOTORS_CH_TRI_YAW, degrees(_pivot_angle)*100);
             break;
     }
@@ -133,7 +150,9 @@ uint32_t AP_MotorsTri::get_motor_mask()
     // tri copter uses channels 1,2,4 and 7
     uint32_t motor_mask = (1U << AP_MOTORS_MOT_1) |
                           (1U << AP_MOTORS_MOT_2) |
-                          (1U << AP_MOTORS_MOT_4);
+                          (1U << AP_MOTORS_MOT_4) |
+                          (1U << AP_MOTORS_MOT_5) |
+                          (1U << AP_MOTORS_MOT_6) ;
     uint32_t mask = motor_mask_to_srv_channel_mask(motor_mask);
 
     // add parent's mask
@@ -176,11 +195,7 @@ void AP_MotorsTri::output_armed_stabilizing()
     }
 
     // calculate angle of yaw pivot
-    _pivot_angle = safe_asin(yaw_thrust);
-    if (fabsf(_pivot_angle) > radians(_yaw_servo_angle_max_deg)) {
-        limit.yaw = true;
-        _pivot_angle = constrain_float(_pivot_angle, -radians(_yaw_servo_angle_max_deg), radians(_yaw_servo_angle_max_deg));
-    }
+    _pivot_angle = 0.0; //safe_asin(yaw_thrust);  there are no servo, set to 0
 
     float pivot_thrust_max = cosf(_pivot_angle);
     float thrust_max = 1.0f;
@@ -198,13 +213,9 @@ void AP_MotorsTri::output_armed_stabilizing()
     throttle_avg_max = constrain_float(throttle_avg_max, throttle_thrust, _throttle_thrust_max);
 
     // The following mix may be offer less coupling between axis but needs testing
-    //_thrust_right = roll_thrust * -0.5f + pitch_thrust * 1.0f;
-    //_thrust_left = roll_thrust * 0.5f + pitch_thrust * 1.0f;
-    //_thrust_rear = 0;
-
-    _thrust_right = roll_thrust * -0.5f + pitch_thrust * 0.5f;
-    _thrust_left = roll_thrust * 0.5f + pitch_thrust * 0.5f;
-    _thrust_rear = pitch_thrust * -0.5f;
+    _thrust_right = roll_thrust * -0.5f + pitch_thrust * 1.0f;
+    _thrust_left = roll_thrust * 0.5f + pitch_thrust * 1.0f;
+    _thrust_rear = 0;
 
     // calculate roll and pitch for each motor
     // set rpy_low and rpy_high to the lowest and highest values of the motors
@@ -214,6 +225,12 @@ void AP_MotorsTri::output_armed_stabilizing()
     rpy_high = MAX(_thrust_right, _thrust_left);
     if (rpy_low > _thrust_rear) {
         rpy_low = _thrust_rear;
+    }
+    if (rpy_low > _thrust_rear_up) {
+        rpy_low = _thrust_rear_up;
+    }
+    if (rpy_low > _thrust_rear_down) {
+        rpy_low = _thrust_rear_down;
     }
     // check to see if the rear motor will reach maximum thrust before the front two motors
     if ((1.0f - rpy_high) > (pivot_thrust_max - _thrust_rear)) {
@@ -260,6 +277,7 @@ void AP_MotorsTri::output_armed_stabilizing()
         }
     }
 
+
     // determine throttle thrust for harmonic notch
     const float throttle_thrust_best_plus_adj = throttle_thrust_best_rpy + thr_adj;
     // compensation_gain can never be zero
@@ -270,15 +288,35 @@ void AP_MotorsTri::output_armed_stabilizing()
     _thrust_left = throttle_thrust_best_plus_adj + rpy_scale * _thrust_left;
     _thrust_rear = throttle_thrust_best_plus_adj + rpy_scale * _thrust_rear;
 
-    // scale pivot thrust to account for pivot angle
-    // we should not need to check for divide by zero as _pivot_angle is constrained to the 5deg ~ 80 deg range
-    _thrust_rear = _thrust_rear / cosf(_pivot_angle);
+    float yaw_thrust_offset = 0.5f * yaw_thrust * rpy_scale;
+    if (throttle_thrust < abs(yaw_thrust_offset))//如果尾电机已经降到0了，则对其进行限幅
+    {
+        if (yaw_thrust_offset > 1.0e3f)
+        {
+            yaw_thrust_offset = std::copysign(1.0,yaw_thrust_offset) * throttle_thrust;
+        }
+    }
+    _thrust_rear_up = throttle_thrust + yaw_thrust_offset;  //range >0  maybe >1
+    _thrust_rear_down = throttle_thrust - yaw_thrust_offset;//range >0  maybe >1
+
+    // 确保偏航在尾旋翼上的叠加上相同比例的
+    if(_thrust_rear_up > 1.0f || _thrust_rear_down > 1.0f){ //如果尾电机饱和，则对其进行限幅
+        limit.yaw = true;
+        if(_thrust_rear_up + _thrust_rear_down < 2.0f){
+            float mid_thrust = (_thrust_rear_up + _thrust_rear_down) / 2.0f;
+            yaw_thrust_offset = 1.0 - mid_thrust;
+            _thrust_rear_up = throttle_thrust + yaw_thrust_offset;
+            _thrust_rear_down = throttle_thrust - yaw_thrust_offset;
+        }
+    }
 
     // constrain all outputs to 0.0f to 1.0f
     // test code should be run with these lines commented out as they should not do anything
     _thrust_right = constrain_float(_thrust_right, 0.0f, 1.0f);
     _thrust_left = constrain_float(_thrust_left, 0.0f, 1.0f);
     _thrust_rear = constrain_float(_thrust_rear, 0.0f, 1.0f);
+    _thrust_rear_up = constrain_float(_thrust_rear_up, 0.0f, 1.0f);
+    _thrust_rear_down = constrain_float(_thrust_rear_down, 0.0f, 1.0f); 
 }
 
 // output_test_seq - spin a motor at the pwm value specified
@@ -304,6 +342,14 @@ void AP_MotorsTri::_output_test_seq(uint8_t motor_seq, int16_t pwm)
             // front left motor
             rc_write(AP_MOTORS_MOT_2, pwm);
             break;
+        case 5:
+            // rear up motor
+            rc_write(AP_MOTORS_MOT_5, pwm);
+            break;
+        case 6:
+            // rear down motor
+            rc_write(AP_MOTORS_MOT_6, pwm);
+            break;
         default:
             // do nothing
             break;
@@ -319,15 +365,18 @@ void AP_MotorsTri::thrust_compensation(void)
 {
     if (_thrust_compensation_callback) {
         // convert 3 thrust values into an array indexed by motor number
-        float thrust[4] { _thrust_right, _thrust_left, 0, _thrust_rear };
+        float thrust[6] { _thrust_right, _thrust_left, 0, _thrust_rear, _thrust_rear_up, _thrust_rear_down };
 
         // apply vehicle supplied compensation function
-        _thrust_compensation_callback(thrust, 4);
+        _thrust_compensation_callback(thrust, 6);
 
         // extract compensated thrust values
         _thrust_right = thrust[0];
         _thrust_left = thrust[1];
         _thrust_rear = thrust[3];
+        _thrust_rear_up = thrust[4];
+        _thrust_rear_down = thrust[5];
+
     }
 }
 
@@ -357,6 +406,6 @@ float AP_MotorsTri::get_roll_factor(uint8_t i)
             ret = 1.0f;
             break;
     }
-
+ 
     return ret;
 }

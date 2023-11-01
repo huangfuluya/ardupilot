@@ -65,9 +65,11 @@ protected:
     // parameters
 
     float           _pivot_angle;                       // Angle of yaw pivot
-    float           _thrust_right;
-    float           _thrust_rear;
-    float           _thrust_left;
+    float           _thrust_right;                      //motor 1
+    float           _thrust_rear;                       //motor 4
+    float           _thrust_rear_up;                    //motor 5
+    float           _thrust_rear_down;                  //motor 6
+    float           _thrust_left;                       //motor 2
 
     // reverse pitch
     bool _pitch_reversed;
