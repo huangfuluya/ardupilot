@@ -482,6 +482,10 @@ protected:
 
 class ModeFBWA : public Mode
 {
+private:
+    float _yaw_des;
+    float _last_time_ms;
+    float _yaw_ctrl;
 public:
 
     Number mode_number() const override { return Number::FLY_BY_WIRE_A; }
@@ -493,6 +497,10 @@ public:
     
     bool mode_allows_autotuning() const override { return true; }
 
+    void update_yaw_rate_des(float beta, float bank, float arspd_ms,float yaw);
+    float get_yaw_des() const {return _yaw_des;}
+    float get_yaw_ctrl() const {return _yaw_ctrl;}
+    bool _enter() override;
 };
 
 class ModeFBWB : public Mode

@@ -1266,6 +1266,12 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     AP_SUBGROUPINFO(precland, "PLND_", 35, ParametersG2, AC_PrecLand),
 #endif
 
+    //从侧滑角到偏航角速度的转换系数
+    AP_GROUPINFO("Y_BETA2RATE", 36, ParametersG2, beta_to_rate, 0.1f),
+    //偏航角速度的限制,deg/s^2
+    AP_GROUPINFO("Y_RAT_CON_DEG", 37, ParametersG2, rate_constrain_deg, 45.0f),
+    AP_GROUPINFO("Y_ERR_CON_DEG", 38, ParametersG2, yaw_err_constrain_deg, 30.0f),
+    AP_GROUPINFO("Y_ERR2RATE", 39, ParametersG2, err_to_rate, 0.1f),
     AP_GROUPEND
 };
 
