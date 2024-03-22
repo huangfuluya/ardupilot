@@ -83,8 +83,7 @@ void ModeFBWA::update_yaw_rate_des(float beta, float bank, float arspd_ms,float 
     msg.z = beta;
     memcpy(msg.name, "debug_msg", sizeof(msg.name));
     msg.time_usec = AP_HAL::millis() * 1000;
-    mavlink_msg_debug_vect_send_struct(MAVLINK_COMM_0, &msg);
-
+    gcs().send_to_active_channels(MAVLINK_MSG_ID_DEBUG_VECT,(const char *)&msg);
 
 }
 
