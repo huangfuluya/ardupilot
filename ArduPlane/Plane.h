@@ -1126,7 +1126,8 @@ private:
     void channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, SRV_Channel::Aux_servo_function_t func2_in,
                                 SRV_Channel::Aux_servo_function_t func1_out, SRV_Channel::Aux_servo_function_t func2_out) const;
 
-    void mix_tailfin(SRV_Channel::Aux_servo_function_t yaw_left, 
+    void mix_tailfin(SRV_Channel::Aux_servo_function_t yaw_ctrl,
+                     SRV_Channel::Aux_servo_function_t yaw_left, 
                      SRV_Channel::Aux_servo_function_t yaw_right) const;
 
     void flaperon_update();

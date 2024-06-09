@@ -1,29 +1,29 @@
 name: Build cuav-x7 firmware
 
-on: push
+on: push #当有新的push事件时触发
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest #使用ubuntu系统
 
     container:
-      image: ardupilot/ardupilot-dev-chibios:latest
+      image: ardupilot/ardupilot-dev-chibios:latest #使用ardupilot/ardupilot-dev-chibios:latest镜像
 
     steps:
       # Check out your repository
-      - name: Check out code
+      - name: 检出代码
         uses: actions/checkout@v2
         with:
           submodules: 'recursive'
 
       # Build the firmware
-      - name: Build firmware
+      - name: 编译固件
         run: |
           ./waf configure --board cuav-x7
           ./waf plane
 
       # Upload the firmware as an artifact
-      - name: Upload firmware
+      - name: 保存固件
         uses: actions/upload-artifact@v2
         with:
           name: cuav-x7-firmware
