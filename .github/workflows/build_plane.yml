@@ -27,4 +27,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: cuav-x7-firmware
-          path: ./build/cuav-x7/bin/*.bin
+          path: ./build/CUAV-X7/bin/
