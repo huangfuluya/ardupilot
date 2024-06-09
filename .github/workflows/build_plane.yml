@@ -1,0 +1,28 @@
+name: Build cuav-x7 firmware
+
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ardupilot/ardupilot-dev:latest
+
+    steps:
+      # Check out your repository
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      # Build the firmware
+      - name: Build firmware
+        run: |
+          ./waf configure --board cuav-x7
+          ./waf plane
+
+      # Upload the firmware as an artifact
+      - name: Upload firmware
+        uses: actions/upload-artifact@v2
+        with:
+          name: cuav-x7-firmware
+          path: ./build/cuav-x7/bin/*.bin
