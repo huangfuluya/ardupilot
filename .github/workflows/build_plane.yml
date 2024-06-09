@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ardupilot/ardupilot-dev:latest
+      image: ardupilot/ardupilot-dev-chibios:latest
 
     steps:
       # Check out your repository
