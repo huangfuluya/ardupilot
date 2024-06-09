@@ -13,6 +13,8 @@ jobs:
       # Check out your repository
       - name: Check out code
         uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
 
       # Build the firmware
       - name: Build firmware
