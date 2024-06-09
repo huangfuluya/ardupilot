@@ -35,7 +35,7 @@ void ModeFBWA::update()
         }
     }
 
-    if(g2.err_to_rate_enable){
+    if(plane.g2.err_to_rate_enable){
         //获取侧滑角
         float beta = AP::ahrs().getSSA();
         float roll = AP::ahrs().get_roll();
