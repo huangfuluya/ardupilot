@@ -2,6 +2,7 @@
 
 #if AP_CAMERA_ENABLED
 
+#include <GCS_MAVLink/GCS.h>
 #include <AP_Math/AP_Math.h>
 #include <AP_HAL/AP_HAL.h>
 #include <SRV_Channel/SRV_Channel.h>
@@ -201,42 +202,42 @@ void AP_Camera::init()
         switch ((CameraType)_params[instance].type.get()) {
 #if AP_CAMERA_SERVO_ENABLED
         case CameraType::SERVO:
-            _backends[instance] = new AP_Camera_Servo(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_Servo(*this, _params[instance], instance);
             break;
 #endif
 #if AP_CAMERA_RELAY_ENABLED
         case CameraType::RELAY:
-            _backends[instance] = new AP_Camera_Relay(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_Relay(*this, _params[instance], instance);
             break;
 #endif
 #if AP_CAMERA_SOLOGIMBAL_ENABLED
         // check for GoPro in Solo camera
         case CameraType::SOLOGIMBAL:
-            _backends[instance] = new AP_Camera_SoloGimbal(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_SoloGimbal(*this, _params[instance], instance);
             break;
 #endif
 #if AP_CAMERA_MOUNT_ENABLED
         // check for Mount camera
         case CameraType::MOUNT:
-            _backends[instance] = new AP_Camera_Mount(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_Mount(*this, _params[instance], instance);
             break;
 #endif
 #if AP_CAMERA_MAVLINK_ENABLED
         // check for MAVLink enabled camera driver
         case CameraType::MAVLINK:
-            _backends[instance] = new AP_Camera_MAVLink(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_MAVLink(*this, _params[instance], instance);
             break;
 #endif
 #if AP_CAMERA_MAVLINKCAMV2_ENABLED
         // check for MAVLink Camv2 driver
         case CameraType::MAVLINK_CAMV2:
-            _backends[instance] = new AP_Camera_MAVLinkCamV2(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_MAVLinkCamV2(*this, _params[instance], instance);
             break;
 #endif
 #if AP_CAMERA_SCRIPTING_ENABLED
         // check for Scripting driver
         case CameraType::SCRIPTING:
-            _backends[instance] = new AP_Camera_Scripting(*this, _params[instance], instance);
+            _backends[instance] = NEW_NOTHROW AP_Camera_Scripting(*this, _params[instance], instance);
             break;
 #endif
         case CameraType::NONE:
@@ -324,6 +325,29 @@ MAV_RESULT AP_Camera::handle_command(const mavlink_command_int_t &packet)
             break;
         }
         return MAV_RESULT_DENIED;
+
+#if AP_CAMERA_SET_CAMERA_SOURCE_ENABLED
+    case MAV_CMD_SET_CAMERA_SOURCE:
+        // sanity check instance
+        if (is_negative(packet.param1) || packet.param1 > AP_CAMERA_MAX_INSTANCES) {
+            return MAV_RESULT_DENIED;
+        }
+        if (is_zero(packet.param1)) {
+            // set camera source for all backends
+            bool accepted = false;
+            for (uint8_t i = 0; i < ARRAY_SIZE(_backends); i++) {
+                if (_backends[i] != nullptr) {
+                    accepted |= set_camera_source(i, (AP_Camera::CameraSource)packet.param2, (AP_Camera::CameraSource)packet.param3);
+                }
+            }
+            return accepted ? MAV_RESULT_ACCEPTED : MAV_RESULT_DENIED;
+        }
+        if (set_camera_source(packet.param1-1, (AP_Camera::CameraSource)packet.param2, (AP_Camera::CameraSource)packet.param3)) {
+            return MAV_RESULT_ACCEPTED;
+        }
+        return MAV_RESULT_DENIED;
+#endif
+
     case MAV_CMD_IMAGE_START_CAPTURE:
         // param1 : camera id
         // param2 : interval (in seconds)
@@ -407,6 +431,44 @@ MAV_RESULT AP_Camera::handle_command(const mavlink_command_int_t &packet)
     default:
         return MAV_RESULT_UNSUPPORTED;
     }
+}
+
+// send a mavlink message; returns false if there was not space to
+// send the message, true otherwise
+bool AP_Camera::send_mavlink_message(GCS_MAVLINK &link, const enum ap_message msg_id)
+{
+    const auto chan = link.get_chan();
+
+    switch (msg_id) {
+    case MSG_CAMERA_FEEDBACK:
+        CHECK_PAYLOAD_SIZE2(CAMERA_FEEDBACK);
+        send_feedback(chan);
+        break;
+    case MSG_CAMERA_INFORMATION:
+        CHECK_PAYLOAD_SIZE2(CAMERA_INFORMATION);
+        send_camera_information(chan);
+        break;
+    case MSG_CAMERA_SETTINGS:
+        CHECK_PAYLOAD_SIZE2(CAMERA_SETTINGS);
+        send_camera_settings(chan);
+        break;
+#if AP_CAMERA_SEND_FOV_STATUS_ENABLED
+    case MSG_CAMERA_FOV_STATUS:
+        CHECK_PAYLOAD_SIZE2(CAMERA_FOV_STATUS);
+        send_camera_fov_status(chan);
+        break;
+#endif
+    case MSG_CAMERA_CAPTURE_STATUS:
+        CHECK_PAYLOAD_SIZE2(CAMERA_CAPTURE_STATUS);
+        send_camera_capture_status(chan);
+        break;
+
+    default:
+        // should not reach this; should only be called for specific IDs
+        break;
+    }
+
+    return true;
 }
 
 // set camera trigger distance in a mission
@@ -666,6 +728,7 @@ bool AP_Camera::set_tracking(uint8_t instance, TrackingType tracking_type, const
     return backend->set_tracking(tracking_type, p1, p2);
 }
 
+#if AP_CAMERA_SET_CAMERA_SOURCE_ENABLED
 // set camera lens as a value from 0 to 5
 bool AP_Camera::set_lens(uint8_t lens)
 {
@@ -689,6 +752,21 @@ bool AP_Camera::set_lens(uint8_t instance, uint8_t lens)
     // call instance
     return backend->set_lens(lens);
 }
+
+// set_camera_source is functionally the same as set_lens except primary and secondary lenses are specified by type
+bool AP_Camera::set_camera_source(uint8_t instance, CameraSource primary_source, CameraSource secondary_source)
+{
+    WITH_SEMAPHORE(_rsem);
+
+    auto *backend = get_instance(instance);
+    if (backend == nullptr) {
+        return false;
+    }
+
+    // call instance
+    return backend->set_camera_source(primary_source, secondary_source);
+}
+#endif // AP_CAMERA_SET_CAMERA_SOURCE_ENABLED
 
 #if AP_CAMERA_SCRIPTING_ENABLED
 // accessor to allow scripting backend to retrieve state

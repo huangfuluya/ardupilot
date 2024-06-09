@@ -30,28 +30,6 @@
 #include <SITL/SIM_GPS.h>
 #include <GCS_MAVLink/GCS_MAVLink.h>
 
-/**
-   maximum number of GPS instances available on this platform. If more
-   than 1 then redundant sensors may be available
- */
-#ifndef GPS_MAX_RECEIVERS
-#define GPS_MAX_RECEIVERS 2 // maximum number of physical GPS sensors allowed - does not include virtual GPS created by blending receiver data
-#endif
-#if !defined(GPS_MAX_INSTANCES)
-#if GPS_MAX_RECEIVERS > 1
-#define GPS_MAX_INSTANCES  (GPS_MAX_RECEIVERS + 1) // maximum number of GPS instances including the 'virtual' GPS created by blending receiver data
-#else
-#define GPS_MAX_INSTANCES 1
-#endif // GPS_MAX_RECEIVERS > 1
-#endif // GPS_MAX_INSTANCES
-
-#if GPS_MAX_RECEIVERS <= 1 && GPS_MAX_INSTANCES > 1
-#error "GPS_MAX_INSTANCES should be 1 for GPS_MAX_RECEIVERS <= 1"
-#endif
-
-#if GPS_MAX_INSTANCES > GPS_MAX_RECEIVERS
-#define GPS_BLENDED_INSTANCE GPS_MAX_RECEIVERS  // the virtual blended GPS is always the highest instance (2)
-#endif
 #define GPS_UNKNOWN_DOP UINT16_MAX // set unknown DOP's to maximum value, which is also correct for MAVLink
 
 // the number of GPS leap seconds - copied into SIM_GPS.cpp
@@ -219,7 +197,7 @@ public:
         uint16_t time_week;                 ///< GPS week number
         Location location;                  ///< last fix location
         float ground_speed;                 ///< ground speed in m/s
-        float ground_course;                ///< ground course in degrees
+        float ground_course;                ///< ground course in degrees, wrapped 0-360
         float gps_yaw;                      ///< GPS derived yaw information, if available (degrees)
         uint32_t gps_yaw_time_ms;           ///< timestamp of last GPS yaw reading
         bool  gps_yaw_configured;           ///< GPS is configured to provide yaw
@@ -616,10 +594,14 @@ public:
 #if GPS_MOVING_BASELINE
     // methods used by UAVCAN GPS driver and AP_Periph for moving baseline
     void inject_MBL_data(uint8_t* data, uint16_t length);
-    void get_RelPosHeading(uint32_t &timestamp, float &relPosHeading, float &relPosLength, float &relPosD, float &accHeading);
+    bool get_RelPosHeading(uint32_t &timestamp, float &relPosHeading, float &relPosLength, float &relPosD, float &accHeading) WARN_IF_UNUSED;
     bool get_RTCMV3(const uint8_t *&bytes, uint16_t &len);
     void clear_RTCMV3();
 #endif // GPS_MOVING_BASELINE
+
+#if !AP_GPS_BLENDED_ENABLED
+    uint8_t get_auto_switch_type() const { return _auto_switch; }
+#endif
 
 protected:
 
@@ -704,12 +686,24 @@ private:
         uint8_t current_baud;
         uint32_t probe_baud;
         bool auto_detected_baud;
+#if AP_GPS_UBLOX_ENABLED
         struct UBLOX_detect_state ublox_detect_state;
+#endif
+#if AP_GPS_SIRF_ENABLED
         struct SIRF_detect_state sirf_detect_state;
+#endif
+#if AP_GPS_NMEA_ENABLED
         struct NMEA_detect_state nmea_detect_state;
+#endif
+#if AP_GPS_SBP_ENABLED
         struct SBP_detect_state sbp_detect_state;
+#endif
+#if AP_GPS_SBP2_ENABLED
         struct SBP2_detect_state sbp2_detect_state;
+#endif
+#if AP_GPS_ERB_ENABLED
         struct ERB_detect_state erb_detect_state;
+#endif
     } detect_state[GPS_MAX_RECEIVERS];
 
     struct {
@@ -761,7 +755,7 @@ private:
     void inject_data(const uint8_t *data, uint16_t len);
     void inject_data(uint8_t instance, const uint8_t *data, uint16_t len);
 
-#if defined(GPS_BLENDED_INSTANCE)
+#if AP_GPS_BLENDED_ENABLED
     // GPS blending and switching
     Vector3f _blended_antenna_offset; // blended antenna offset
     float _blended_lag_sec; // blended receiver lag in seconds

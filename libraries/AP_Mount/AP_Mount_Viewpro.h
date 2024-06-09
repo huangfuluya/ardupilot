@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "AP_Mount_Backend.h"
+#include "AP_Mount_Backend_Serial.h"
 
 #if HAL_MOUNT_VIEWPRO_ENABLED
 
@@ -27,18 +27,15 @@
 
 #define AP_MOUNT_VIEWPRO_PACKETLEN_MAX  63  // maximum number of bytes in a packet sent to or received from the gimbal
 
-class AP_Mount_Viewpro : public AP_Mount_Backend
+class AP_Mount_Viewpro : public AP_Mount_Backend_Serial
 {
 
 public:
     // Constructor
-    using AP_Mount_Backend::AP_Mount_Backend;
+    using AP_Mount_Backend_Serial::AP_Mount_Backend_Serial;
 
     /* Do not allow copies */
     CLASS_NO_COPY(AP_Mount_Viewpro);
-
-    // init - performs any required initialisation for this instance
-    void init() override;
 
     // update mount position - should be called periodically
     void update() override;
@@ -77,6 +74,10 @@ public:
 
     // set camera lens as a value from 0 to 5
     bool set_lens(uint8_t lens) override;
+
+    // set_camera_source is functionally the same as set_lens except primary and secondary lenses are specified by type
+    // primary and secondary sources use the AP_Camera::CameraSource enum cast to uint8_t
+    bool set_camera_source(uint8_t primary_source, uint8_t secondary_source) override;
 
     // send camera information message to GCS
     void send_camera_information(mavlink_channel_t chan) const override;
@@ -374,8 +375,6 @@ private:
     bool send_m_ahrs();
 
     // internal variables
-    AP_HAL::UARTDriver *_uart;                      // uart connected to gimbal
-    bool _initialised;                              // true once the driver has been initialised
     uint8_t _msg_buff[AP_MOUNT_VIEWPRO_PACKETLEN_MAX];  // buffer holding latest bytes from gimbal
     uint8_t _msg_buff_len;                          // number of bytes held in msg buff
     const uint8_t _msg_buff_data_start = 2;         // data starts at this byte of _msg_buff

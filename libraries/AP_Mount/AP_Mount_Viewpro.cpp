@@ -7,7 +7,6 @@
 #include <AP_RTC/AP_RTC.h>
 #include <GCS_MAVLink/GCS.h>
 #include <GCS_MAVLink/include/mavlink/v2.0/checksum.h>
-#include <AP_SerialManager/AP_SerialManager.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -27,19 +26,6 @@ extern const AP_HAL::HAL& hal;
 #define debug(fmt, args ...) do { if (AP_MOUNT_VIEWPRO_DEBUG) { GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Viewpro: " fmt, ## args); } } while (0)
 
 const char* AP_Mount_Viewpro::send_text_prefix = "Viewpro:";
-
-// init - performs any required initialisation for this instance
-void AP_Mount_Viewpro::init()
-{
-    const AP_SerialManager& serial_manager = AP::serialmanager();
-
-    _uart = serial_manager.find_serial(AP_SerialManager::SerialProtocol_Gimbal, 0);
-    if (_uart != nullptr) {
-        _initialised = true;
-    }
-
-    AP_Mount_Backend::init();
-}
 
 // update mount position - should be called periodically
 void AP_Mount_Viewpro::update()
@@ -860,6 +846,47 @@ bool AP_Mount_Viewpro::set_lens(uint8_t lens)
 
     // if lens is zero use default lens
     ImageSensor new_image_sensor = ImageSensor(lens);
+    return send_camera_command(new_image_sensor, CameraCommand::NO_ACTION, 0);
+}
+
+// set_camera_source is functionally the same as set_lens except primary and secondary lenses are specified by type
+// primary and secondary sources use the AP_Camera::CameraSource enum cast to uint8_t
+bool AP_Mount_Viewpro::set_camera_source(uint8_t primary_source, uint8_t secondary_source)
+{
+    // maps primary and secondary source to viewpro image sensor
+    ImageSensor new_image_sensor;
+    switch (primary_source) {
+    case 0: // Default (RGB)
+        FALLTHROUGH;
+    case 1: // RGB
+        switch (secondary_source) {
+        case 0: // RGB + Default (None)
+            new_image_sensor = ImageSensor::EO1;
+            break;
+        case 2: // PIP RGB+IR
+            new_image_sensor = ImageSensor::EO1_IR_PIP;
+            break;
+        default:
+            return false;
+        }
+        break;
+    case 2: // IR
+        switch (secondary_source) {
+        case 0: // IR + Default (None)
+            new_image_sensor = ImageSensor::IR;
+            break;
+        case 1: // PIP IR+RGB
+            new_image_sensor = ImageSensor::IR_EO1_PIP;
+            break;
+        default:
+            return false;
+        }
+        break;
+    default:
+        return false;
+    }
+
+    // send desired image type to camera
     return send_camera_command(new_image_sensor, CameraCommand::NO_ACTION, 0);
 }
 
