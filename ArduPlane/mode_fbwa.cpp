@@ -35,14 +35,15 @@ void ModeFBWA::update()
         }
     }
 
-    //获取侧滑角
-    float beta = AP::ahrs().getSSA();
-    float roll = AP::ahrs().get_roll();
-    float yaw = AP::ahrs().get_yaw();
-    float arspd_ms = AP::ahrs().groundspeed();      //没有空速的时候就用地速
-    UNUSED_RESULT(AP::ahrs().airspeed_estimate(arspd_ms));
-    update_yaw_rate_des(beta, roll, arspd_ms, yaw);
-
+    if(g2.err_to_rate_enable){
+        //获取侧滑角
+        float beta = AP::ahrs().getSSA();
+        float roll = AP::ahrs().get_roll();
+        float yaw = AP::ahrs().get_yaw();
+        float arspd_ms = AP::ahrs().groundspeed();      //没有空速的时候就用地速
+        UNUSED_RESULT(AP::ahrs().airspeed_estimate(arspd_ms));
+        update_yaw_rate_des(beta, roll, arspd_ms, yaw);
+    }
 }
 
 void ModeFBWA::update_yaw_rate_des(float beta, float bank, float arspd_ms,float yaw)
@@ -83,8 +84,8 @@ void ModeFBWA::update_yaw_rate_des(float beta, float bank, float arspd_ms,float 
     msg.z = beta;
     memcpy(msg.name, "debug_msg", sizeof(msg.name));
     msg.time_usec = AP_HAL::millis() * 1000;
-    gcs().send_to_active_channels(MAVLINK_MSG_ID_DEBUG_VECT,(const char *)&msg);
-
+    // gcs().send_to_active_channels(MAVLINK_MSG_ID_DEBUG_VECT,(const char *)&msg);
+    mavlink_msg_debug_vect_send_struct(MAVLINK_COMM_0, &msg);
 }
 
 bool ModeFBWA::_enter() 

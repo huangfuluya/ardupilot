@@ -191,24 +191,26 @@ void Plane::channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, S
 void Plane::mix_tailfin(SRV_Channel::Aux_servo_function_t yaw_left, 
                         SRV_Channel::Aux_servo_function_t yaw_right) const 
 {
-    // float in1 = SRV_Channels::get_output_scaled(yaw_ctrl);
-    float in1 = 0.0f;
-    if(get_mode()==Mode::Number::FLY_BY_WIRE_A) //如果为FBWA模式，则采用修改后yaw控制逻辑
+    float in1 = SRV_Channels::get_output_scaled(yaw_ctrl);
+    // float in1 = 0.0f;
+    if(g2.err_to_rate_enable && get_mode()==Mode::Number::FLY_BY_WIRE_A) //如果为FBWA模式，则采用修改后yaw控制逻辑
     {
         in1 = mode_fbwa.get_yaw_ctrl() * 4500.0f;
     }
+    //in1的范围是4500，out1的范围是-4500到4500，左右都是半动的形式
     float out1 = 0.0f;
     float out2 = 0.0f;
     if (in1 > 0) // 右偏航，仅右
     {
         out1 = 0.0f;
-        out2 = constrain_float(-in1, -4500, 4500);
+        out2 = constrain_float(in1*2-4500, -4500, 4500);
     }
     else
     {       // 左偏航，仅左
-        out1 = constrain_float(in1, -4500, 4500);
+        out1 = constrain_float(-in1*2-4500, -4500, 4500);
         out2 = 0.0f;
     }
+    
     SRV_Channels::set_output_scaled(yaw_left, out1);
     SRV_Channels::set_output_scaled(yaw_right, out2);
 }

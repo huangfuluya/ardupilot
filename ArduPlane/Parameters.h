@@ -594,6 +594,7 @@ public:
     AP_Float rate_constrain_deg;//偏航角速度的限制,deg/s^2
     AP_Float yaw_err_constrain_deg;
     AP_Float err_to_rate;
+    AP_Int8 err_to_rate_enable;
 
     // just to make compilation easier when all things are compiled out...
     uint8_t unused_integer;
