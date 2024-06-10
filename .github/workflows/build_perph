@@ -1,0 +1,36 @@
+name: Build periph
+
+on: push #当有新的push事件时触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest #使用ubuntu系统
+
+    strategy:
+      matrix:
+        board: 
+          - CubeOrange-periph
+          - CubeOrange-periph-heavy
+
+    container:
+      image: ardupilot/ardupilot-dev-chibios:latest #使用ardupilot/ardupilot-dev-chibios:latest镜像
+
+    steps:
+      # Check out your repository
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      # Build the firmware
+      - name: 编译固件
+        run: |
+          ./waf configure --board ${{ matrix.board }}
+          ./waf AP_Periph
+
+      # Upload the firmware as an artifact
+      - name: 保存固件
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.board }}-firmware
+          path: ./build/${{ matrix.board }}/bin/
