@@ -1,10 +1,21 @@
-name: Build cuav-x7 firmware
+name: Build firmware
 
 on: push #当有新的push事件时触发
 
 jobs:
   build:
     runs-on: ubuntu-latest #使用ubuntu系统
+
+    strategy:
+      matrix:
+        board: 
+          - CUAV-X7-bdshot
+          - CubeOrange-bdshot
+          - CubeOrange-SimOnHardWare
+          - CUAVv5-bdshot
+          - CUAVv5Nano-bdshot
+          - Pixhawk6C-bdshot
+          - Pixhawk6X-bdshot
 
     container:
       image: ardupilot/ardupilot-dev-chibios:latest #使用ardupilot/ardupilot-dev-chibios:latest镜像
@@ -19,12 +30,14 @@ jobs:
       # Build the firmware
       - name: 编译固件
         run: |
-          ./waf configure --board cuav-x7
+          ./waf configure --board ${{ matrix.board }}
           ./waf plane
+          ./waf copter
+          ./waf heli
 
       # Upload the firmware as an artifact
       - name: 保存固件
         uses: actions/upload-artifact@v4
         with:
-          name: cuav-x7-firmware
-          path: ./build/CUAV-X7/bin/
+          name: ${{ matrix.board }}-firmware
+          path: ./build/${{ matrix.board }}/bin/
