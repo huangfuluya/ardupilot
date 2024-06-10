@@ -24,7 +24,7 @@ jobs:
 
       # Upload the firmware as an artifact
       - name: 保存固件
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: cuav-x7-firmware
           path: ./build/CUAV-X7/bin/
