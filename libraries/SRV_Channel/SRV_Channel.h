@@ -20,6 +20,7 @@
 #include <AP_Volz_Protocol/AP_Volz_Protocol.h>
 #include <AP_RobotisServo/AP_RobotisServo.h>
 #include <AP_SBusOut/AP_SBusOut.h>
+#include <AP_FeeTech/AP_FeeTech.h>
 #include <AP_BLHeli/AP_BLHeli.h>
 #include <AP_FETtecOneWire/AP_FETtecOneWire.h>
 
@@ -610,6 +611,12 @@ private:
     // support for SBUS protocol
     AP_SBusOut sbus;
     static AP_SBusOut *sbus_ptr;
+#endif
+
+#if AP_FEETECH_ENABLED
+    // support for SBUS protocol
+    AP_FeeTech feetech;
+    static AP_FeeTech *feetech_ptr;
 #endif
 
 #if AP_ROBOTISSERVO_ENABLED

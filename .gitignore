@@ -111,6 +111,7 @@ GPATH
 GRTAGS
 GTAGS
 *.apj
+*.out
 .gdbinit
 .vscode/*
 !.vscode/extensions.json
@@ -166,3 +167,4 @@ ENV/
 env.bak/
 venv.bak/
 autotest_result_*_junit.xml
+dumpstack.sh_arduplane.204992.out
