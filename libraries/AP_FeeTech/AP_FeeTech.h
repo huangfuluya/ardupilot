@@ -22,18 +22,32 @@ public:
     /* Do not allow copies */
     CLASS_NO_COPY(AP_FeeTech);
 
+    // get singleton instance
+    static AP_FeeTech *get_singleton() {
+        return _singleton;
+    }
+
+
     static const struct AP_Param::GroupInfo var_info[];
 
     void update(void);
 
     SMS_STS sms_sts;
     
+    void trim(void){
+        _trim_flag = true;
+    }
+    void release(void){
+        _trim_flag = false;
+    }
 private:
+    static AP_FeeTech *_singleton;
 
     void init(void);
 
     AP_Int8 start_chan;
     bool initialised;
+    bool _trim_flag = true;
 };
 
 #endif  // AP_FEETECH_ENABLED

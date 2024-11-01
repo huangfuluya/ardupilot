@@ -59,6 +59,7 @@ extern const AP_HAL::HAL& hal;
 #include <AP_VideoTX/AP_VideoTX.h>
 #include <AP_Torqeedo/AP_Torqeedo.h>
 #include <AP_Vehicle/AP_Vehicle_Type.h>
+#include <AP_FeeTech/AP_FeeTech.h>
 #define SWITCH_DEBOUNCE_TIME_MS  200
 
 const AP_Param::GroupInfo RC_Channel::var_info[] = {
@@ -667,6 +668,7 @@ void RC_Channel::init_aux_function(const aux_func_t ch_option, const AuxSwitchPo
     case AUX_FUNC::MAG_CAL:
     case AUX_FUNC::CAMERA_IMAGE_TRACKING:
     case AUX_FUNC::MOUNT_LRF_ENABLE:
+    case AUX_FUNC::FEETECH_TRIM:
         break;
 
     // not really aux functions:
@@ -774,6 +776,7 @@ const RC_Channel::LookupTable RC_Channel::lookuptable[] = {
     { AUX_FUNC::CAMERA_IMAGE_TRACKING, "Camera Image Tracking"},
     { AUX_FUNC::CAMERA_LENS, "Camera Lens"},
     { AUX_FUNC::MOUNT_LRF_ENABLE, "Mount LRF Enable"},
+    { AUX_FUNC::FEETECH_TRIM,"Feetech servo trim"}
 };
 
 /* lookup the announcement for switch change */
@@ -1568,6 +1571,26 @@ bool RC_Channel::do_aux_function(const aux_func_t ch_option, const AuxSwitchPos 
         break;
     }
 #endif
+    case AUX_FUNC::FEETECH_TRIM: {
+        AP_FeeTech *feetech = AP_FeeTech::get_singleton();
+        if (feetech == nullptr) {
+            break;
+        }
+        switch (ch_flag) {
+        case AuxSwitchPos::HIGH:
+            feetech->release();     //与解锁保持一致，解锁后才释放，未解锁时保持中位
+            gcs().send_text(MAV_SEVERITY_INFO, "Feetech servo release");
+            break;
+        case AuxSwitchPos::MIDDLE:
+            // nothing
+            break;
+        case AuxSwitchPos::LOW:
+            feetech->trim();
+            gcs().send_text(MAV_SEVERITY_INFO, "Feetech servo trim");
+            break;
+        }
+        break;
+    }
 
 #if HAL_LOGGING_ENABLED
     case AUX_FUNC::LOG_PAUSE: {

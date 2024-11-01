@@ -250,6 +250,7 @@ public:
         CAMERA_LENS =        175, // camera lens selection
         VFWD_THR_OVERRIDE =  176, // force enabled VTOL forward throttle method
         MOUNT_LRF_ENABLE =   177,  // mount LRF enable/disable
+        FEETECH_TRIM =       178,  // feetech trim
 
 
         // inputs from 200 will eventually used to replace RCMAP
