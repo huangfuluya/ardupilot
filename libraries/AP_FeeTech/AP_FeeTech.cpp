@@ -63,7 +63,7 @@ void AP_FeeTech::update()
         channels[i] = c->get_output_pwm(); //返回pwm值，可以使用servo output的最大最小值的设置
         //1000到2000对应正负七圈
         int16_t pos = (int16_t)((channels[i] - 1500) * 7 * 4.096f);
-        sms_sts.WritePosEx(i,pos,0,0);
+        sms_sts.WritePosEx(i + start_chan,pos,0,0);
         // pos = pos +1;
         // sms_sts.WritePosEx(1,2048,0,1000);
     }
