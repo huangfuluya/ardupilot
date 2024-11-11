@@ -10,7 +10,6 @@
 #include <AP_HAL/AP_HAL.h>
 
 #include "Heat_Pwm.h"
-#include "ToneAlarm_Disco.h"
 #include "Util.h"
 
 using namespace Linux;
@@ -242,7 +241,7 @@ int Util::get_hw_arm32()
     return -ENOENT;
 }
 
-#ifdef ENABLE_HEAP
+#if ENABLE_HEAP
 void *Util::allocate_heap_memory(size_t size)
 {
     struct heap *new_heap = (struct heap*)malloc(sizeof(struct heap));
