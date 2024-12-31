@@ -1,14 +1,15 @@
 #include "Plane.h"
 
 Mode::Mode() :
-    ahrs(plane.ahrs)
+    unused_integer{17},
 #if HAL_QUADPLANE_ENABLED
-    , quadplane(plane.quadplane),
     pos_control(plane.quadplane.pos_control),
     attitude_control(plane.quadplane.attitude_control),
     loiter_nav(plane.quadplane.loiter_nav),
-    poscontrol(plane.quadplane.poscontrol)
+    quadplane(plane.quadplane),
+    poscontrol(plane.quadplane.poscontrol),
 #endif
+    ahrs(plane.ahrs)
 {
 }
 
@@ -140,6 +141,10 @@ bool Mode::enter()
 
         // Make sure the flight stage is correct for the new mode
         plane.update_flight_stage();
+        
+        // reset landing state
+        plane.landing.reset();
+
 
 #if HAL_QUADPLANE_ENABLED
         if (quadplane.enabled()) {

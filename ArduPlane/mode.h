@@ -11,6 +11,16 @@
 #include <AP_Mission/AP_Mission.h>
 #include "pullup.h"
 
+#ifndef AP_QUICKTUNE_ENABLED
+#define AP_QUICKTUNE_ENABLED HAL_QUADPLANE_ENABLED
+#endif
+
+#ifndef MODE_AUTOLAND_ENABLED
+#define MODE_AUTOLAND_ENABLED 1
+#endif
+
+#include <AP_Quicktune/AP_Quicktune.h>
+
 class AC_PosControl;
 class AC_AttitudeControl_Multi;
 class AC_Loiter;
@@ -55,6 +65,11 @@ public:
 #if HAL_QUADPLANE_ENABLED
         LOITER_ALT_QLAND = 25,
 #endif
+#if MODE_AUTOLAND_ENABLED
+        AUTOLAND      = 26,
+#endif
+
+    // Mode number 30 reserved for "offboard" for external/lua control.
     };
 
     // Constructor
@@ -142,6 +157,11 @@ public:
     // true if voltage correction should be applied to throttle
     virtual bool use_battery_compensation() const;
 
+#if AP_QUICKTUNE_ENABLED
+    // does this mode support VTOL quicktune?
+    virtual bool supports_quicktune() const { return false; }
+#endif
+
 protected:
 
     // subclasses override this to perform checks before entering the mode
@@ -158,6 +178,9 @@ protected:
 
     // Output pilot throttle, this is used in stabilized modes without auto throttle control
     void output_pilot_throttle();
+
+    // makes the initialiser list in the constructor manageable
+    uint8_t unused_integer;
 
 #if HAL_QUADPLANE_ENABLED
     // References for convenience, used by QModes
@@ -322,6 +345,9 @@ protected:
 
     bool _enter() override;
     bool _pre_arm_checks(size_t buflen, char *buffer) const override { return true; }
+#if AP_QUICKTUNE_ENABLED
+    bool supports_quicktune() const override { return true; }
+#endif
 
 private:
     float active_radius_m;
@@ -659,6 +685,9 @@ public:
 protected:
 
     bool _enter() override;
+#if AP_QUICKTUNE_ENABLED
+    bool supports_quicktune() const override { return true; }
+#endif
 };
 
 class ModeQLoiter : public Mode
@@ -685,6 +714,10 @@ protected:
 
     bool _enter() override;
     uint32_t last_target_loc_set_ms;
+
+#if AP_QUICKTUNE_ENABLED
+    bool supports_quicktune() const override { return true; }
+#endif
 };
 
 class ModeQLand : public Mode
@@ -833,7 +866,41 @@ private:
     bool have_autoenabled_fences;
 
 };
+#if MODE_AUTOLAND_ENABLED
+class ModeAutoLand: public Mode
+{
+public:
+    ModeAutoLand();
 
+    Number mode_number() const override { return Number::AUTOLAND; }
+    const char *name() const override { return "AUTOLAND"; }
+    const char *name4() const override { return "ALND"; }
+
+    // methods that affect movement of the vehicle in this mode
+    void update() override;
+
+    void navigate() override;
+
+    bool allows_throttle_nudging() const override { return true; }
+
+    bool does_auto_navigation() const override { return true; }
+
+    bool does_auto_throttle() const override { return true; }
+    
+
+    // var_info for holding parameter information
+    static const struct AP_Param::GroupInfo var_info[];
+
+    AP_Int16 final_wp_alt;
+    AP_Int16 final_wp_dist;
+    AP_Int16 landing_dir_off;
+
+protected:
+    bool _enter() override;
+    AP_Mission::Mission_Command cmd[3];
+    uint8_t stage;
+};
+#endif
 #if HAL_SOARING_ENABLED
 
 class ModeThermal: public Mode

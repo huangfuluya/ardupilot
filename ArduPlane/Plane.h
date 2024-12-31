@@ -92,7 +92,7 @@
  # include <AC_PrecLand/AC_PrecLand.h>
 #endif
 
-#include "GCS_Mavlink.h"
+#include "GCS_MAVLink_Plane.h"
 #include "GCS_Plane.h"
 #include "quadplane.h"
 #include <AP_Tuning/AP_Tuning_config.h>
@@ -115,7 +115,7 @@
 #include <AP_Scripting/AP_Scripting.h>
 #endif
 
-#include "RC_Channel.h"     // RC Channel Library
+#include "RC_Channel_Plane.h"     // RC Channel Library
 #include "Parameters.h"
 #if HAL_ADSB_ENABLED
 #include "avoidance_adsb.h"
@@ -172,7 +172,9 @@ public:
     friend class ModeTakeoff;
     friend class ModeThermal;
     friend class ModeLoiterAltQLand;
-
+#if MODE_AUTOLAND_ENABLED
+    friend class ModeAutoLand;
+#endif
 #if AP_EXTERNAL_CONTROL_ENABLED
     friend class AP_ExternalControl_Plane;
 #endif
@@ -326,10 +328,17 @@ private:
 #endif  // QAUTOTUNE_ENABLED
 #endif  // HAL_QUADPLANE_ENABLED
     ModeTakeoff mode_takeoff;
+#if MODE_AUTOLAND_ENABLED
+    ModeAutoLand mode_autoland;
+#endif
 #if HAL_SOARING_ENABLED
     ModeThermal mode_thermal;
 #endif
 
+#if AP_QUICKTUNE_ENABLED
+    AP_Quicktune quicktune;
+#endif
+    
     // This is the state of the flight control system
     // There are multiple states defined such as MANUAL, FBW-A, AUTO
     Mode *control_mode = &mode_initializing;
@@ -449,7 +458,14 @@ private:
         float throttle_lim_max;
         float throttle_lim_min;
         uint32_t throttle_max_timer_ms;
+        uint32_t level_off_start_time_ms;
         // Good candidate for keeping the initial time for TKOFF_THR_MAX_T.
+#if MODE_AUTOLAND_ENABLED
+       struct {
+            float heading; // deg
+            bool initialized;
+        } initial_direction;
+#endif
     } takeoff_state;
 
     // ground steering controller state
@@ -875,6 +891,10 @@ private:
     static const TerrainLookupTable Terrain_lookup[];
 #endif
 
+#if AP_QUICKTUNE_ENABLED
+    void update_quicktune(void);
+#endif
+
     // Attitude.cpp
     void adjust_nav_pitch_throttle(void);
     void update_load_factor(void);
@@ -1052,7 +1072,7 @@ private:
     bool in_fence_recovery() const;
 #endif
 
-    // ArduPlane.cpp
+    // Plane.cpp
     void disarm_if_autoland_complete();
     bool trigger_land_abort(const float climb_to_alt_m);
     void get_osd_roll_pitch_rad(float &roll, float &pitch) const override;
@@ -1139,6 +1159,7 @@ private:
     int16_t get_takeoff_pitch_min_cd(void);
     void landing_gear_update(void);
     bool check_takeoff_timeout(void);
+    bool check_takeoff_timeout_level_off(void);
 
     // avoidance_adsb.cpp
     void avoidance_adsb_update(void);
@@ -1159,7 +1180,7 @@ private:
     void servos_twin_engine_mix();
     void force_flare();
     void throttle_watt_limiter(int8_t &min_throttle, int8_t &max_throttle);
-    void throttle_slew_limit(SRV_Channel::Aux_servo_function_t func);
+    void throttle_slew_limit();
     bool suppress_throttle(void);
     void update_throttle_hover();
     void channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, SRV_Channel::Aux_servo_function_t func2_in,

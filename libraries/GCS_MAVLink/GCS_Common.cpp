@@ -1030,13 +1030,17 @@ ap_message GCS_MAVLINK::mavlink_id_to_ap_message_id(const uint32_t mavlink_id) c
         { MAVLINK_MSG_ID_SCALED_PRESSURE,       MSG_SCALED_PRESSURE},
         { MAVLINK_MSG_ID_SCALED_PRESSURE2,      MSG_SCALED_PRESSURE2},
         { MAVLINK_MSG_ID_SCALED_PRESSURE3,      MSG_SCALED_PRESSURE3},
-#if AP_GPS_ENABLED
+#if AP_GPS_GPS_RAW_INT_SENDING_ENABLED
         { MAVLINK_MSG_ID_GPS_RAW_INT,           MSG_GPS_RAW},
-        { MAVLINK_MSG_ID_GPS_RTK,               MSG_GPS_RTK},
-#if GPS_MAX_RECEIVERS > 1
-        { MAVLINK_MSG_ID_GPS2_RAW,              MSG_GPS2_RAW},
-        { MAVLINK_MSG_ID_GPS2_RTK,              MSG_GPS2_RTK},
 #endif
+#if AP_GPS_GPS_RTK_SENDING_ENABLED
+        { MAVLINK_MSG_ID_GPS_RTK,               MSG_GPS_RTK},
+#endif
+#if AP_GPS_GPS2_RAW_SENDING_ENABLED
+        { MAVLINK_MSG_ID_GPS2_RAW,              MSG_GPS2_RAW},
+#endif
+#if AP_GPS_GPS2_RTK_SENDING_ENABLED
+        { MAVLINK_MSG_ID_GPS2_RTK,              MSG_GPS2_RTK},
 #endif
         { MAVLINK_MSG_ID_SYSTEM_TIME,           MSG_SYSTEM_TIME},
         { MAVLINK_MSG_ID_RC_CHANNELS_SCALED,    MSG_SERVO_OUT},
@@ -1148,6 +1152,8 @@ ap_message GCS_MAVLINK::mavlink_id_to_ap_message_id(const uint32_t mavlink_id) c
 #if AP_AIRSPEED_ENABLED
         { MAVLINK_MSG_ID_AIRSPEED, MSG_AIRSPEED},
 #endif
+        { MAVLINK_MSG_ID_AVAILABLE_MODES, MSG_AVAILABLE_MODES},
+        { MAVLINK_MSG_ID_AVAILABLE_MODES_MONITOR, MSG_AVAILABLE_MODES_MONITOR},
             };
 
     for (uint8_t i=0; i<ARRAY_SIZE(map); i++) {
@@ -3104,7 +3110,7 @@ MAV_RESULT GCS_MAVLINK::handle_command_do_aux_function(const mavlink_command_int
     }
     const RC_Channel::AUX_FUNC aux_func = (RC_Channel::AUX_FUNC)packet.param1;
     const RC_Channel::AuxSwitchPos position = (RC_Channel::AuxSwitchPos)packet.param2;
-    if (!rc().run_aux_function(aux_func, position, RC_Channel::AuxFuncTriggerSource::MAVLINK)) {
+    if (!rc().run_aux_function(aux_func, position, RC_Channel::AuxFuncTrigger::Source::MAVLINK, chan)) {
         // note that this is not quite right; we could be more nuanced
         // about our return code here.
         return MAV_RESULT_FAILED;
@@ -3199,6 +3205,22 @@ MAV_RESULT GCS_MAVLINK::handle_command_request_message(const mavlink_command_int
     if (id == MSG_LAST) {
         return MAV_RESULT_FAILED;
     }
+
+    switch(id) {
+    case MSG_AVAILABLE_MODES:
+        available_modes.should_send = true;
+        available_modes.next_index = 1;
+        available_modes.requested_index = (uint8_t)packet.param2;
+
+        // After the first request sequnece is streamed in the AVAILABLE_MODES_MONITOR message
+        // This allows the GCS to re-request modes if there is a change
+        set_ap_message_interval(MSG_AVAILABLE_MODES_MONITOR, 5000);
+        break;
+
+    default:
+        break;
+    }
+
     send_message(id);
     return MAV_RESULT_ACCEPTED;
 }
@@ -4299,11 +4321,6 @@ void GCS_MAVLINK::handle_message(const mavlink_message_t &msg)
 #endif
 
 #if AP_GPS_ENABLED
-#if AP_MAVLINK_MSG_HIL_GPS_ENABLED
-    case MAVLINK_MSG_ID_HIL_GPS:
-        send_received_message_deprecation_warning("HIL_GPS");
-        FALLTHROUGH;
-#endif
     case MAVLINK_MSG_ID_GPS_RTCM_DATA:
     case MAVLINK_MSG_ID_GPS_INPUT:
     case MAVLINK_MSG_ID_GPS_INJECT_DATA:
@@ -5490,7 +5507,7 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
 #endif
 
     case MAV_CMD_DO_SET_ROI_NONE: {
-        const Location zero_loc = Location();
+        const Location zero_loc;
         return handle_command_do_set_roi(zero_loc);
     }
 
@@ -5949,57 +5966,6 @@ void GCS_MAVLINK::send_generator_status() const
 }
 #endif
 
-#if AP_RANGEFINDER_ENABLED && APM_BUILD_TYPE(APM_BUILD_Rover)
-void GCS_MAVLINK::send_water_depth() const
-{
-    if (!HAVE_PAYLOAD_SPACE(chan, WATER_DEPTH)) {
-        return;
-    }
-
-    RangeFinder *rangefinder = RangeFinder::get_singleton();
-
-    if (rangefinder == nullptr || !rangefinder->has_orientation(ROTATION_PITCH_270)){
-        return;
-    } 
-
-    // get position
-    const AP_AHRS &ahrs = AP::ahrs();
-    Location loc;
-    IGNORE_RETURN(ahrs.get_location(loc));
-
-    for (uint8_t i=0; i<rangefinder->num_sensors(); i++) {
-        const AP_RangeFinder_Backend *s = rangefinder->get_backend(i);
-        
-        if (s == nullptr || s->orientation() != ROTATION_PITCH_270 || !s->has_data()) {
-            continue;
-        }
-
-        // get temperature
-        float temp_C;
-        if (!s->get_temp(temp_C)) {
-            temp_C = 0.0f;
-        }
-
-        const bool sensor_healthy = (s->status() == RangeFinder::Status::Good);
-
-        mavlink_msg_water_depth_send(
-            chan,
-            AP_HAL::millis(),   // time since system boot TODO: take time of measurement
-            i,                  // rangefinder instance
-            sensor_healthy,     // sensor healthy
-            loc.lat,            // latitude of vehicle
-            loc.lng,            // longitude of vehicle
-            loc.alt * 0.01f,    // altitude of vehicle (MSL)
-            ahrs.get_roll(),    // roll in radians
-            ahrs.get_pitch(),   // pitch in radians
-            ahrs.get_yaw(),     // yaw in radians
-            s->distance(),    // distance in meters
-            temp_C);            // temperature in degC
-    }
-
-}
-#endif  // AP_RANGEFINDER_ENABLED && APM_BUILD_TYPE(APM_BUILD_Rover)
-
 #if HAL_ADSB_ENABLED
 void GCS_MAVLINK::send_uavionix_adsb_out_status() const
 {
@@ -6090,6 +6056,51 @@ void GCS_MAVLINK::send_received_message_deprecation_warning(const char * message
     last_deprecation_message = message;
 
     send_text(MAV_SEVERITY_INFO, "Received message (%s) is deprecated", message);
+}
+
+bool GCS_MAVLINK::send_available_modes()
+{
+    if (!available_modes.should_send) {
+        // must only return false if out of space
+        return true;
+    }
+
+    CHECK_PAYLOAD_SIZE(AVAILABLE_MODES);
+
+    // Zero is a special case for send all.
+    const bool send_all = available_modes.requested_index == 0;
+    uint8_t request_index;
+    if (!send_all) {
+        // Single request
+        request_index = available_modes.requested_index;
+        available_modes.should_send = false;
+
+    } else {
+        // Request all modes
+        request_index = available_modes.next_index;
+        available_modes.next_index += 1;
+    }
+
+    const uint8_t mode_count = send_available_mode(request_index);
+
+    if (send_all && (available_modes.next_index > mode_count)) {
+        // Sending all and just sent the last
+        available_modes.should_send = false;
+    }
+
+    return true;
+}
+
+bool GCS_MAVLINK::send_available_mode_monitor()
+{
+    CHECK_PAYLOAD_SIZE(AVAILABLE_MODES_MONITOR);
+
+    mavlink_msg_available_modes_monitor_send(
+        chan,
+        gcs().get_available_modes_sequence()
+    );
+
+    return true;
 }
 
 bool GCS_MAVLINK::try_send_message(const enum ap_message id)
@@ -6237,28 +6248,32 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
         CHECK_PAYLOAD_SIZE(SYSTEM_TIME);
         send_system_time();
         break;
-#if AP_GPS_ENABLED
+
+#if AP_GPS_GPS_RAW_INT_SENDING_ENABLED
     case MSG_GPS_RAW:
         CHECK_PAYLOAD_SIZE(GPS_RAW_INT);
         AP::gps().send_mavlink_gps_raw(chan);
         break;
+#endif  // AP_GPS_GPS_RAW_INT_SENDING_ENABLED
+#if AP_GPS_GPS_RTK_SENDING_ENABLED
     case MSG_GPS_RTK:
         CHECK_PAYLOAD_SIZE(GPS_RTK);
         AP::gps().send_mavlink_gps_rtk(chan, 0);
         break;
-#if GPS_MAX_RECEIVERS > 1
+#endif  // AP_GPS_GPS_RTK_SENDING_ENABLED
+#if AP_GPS_GPS2_RAW_SENDING_ENABLED
     case MSG_GPS2_RAW:
         CHECK_PAYLOAD_SIZE(GPS2_RAW);
         AP::gps().send_mavlink_gps2_raw(chan);
         break;
-#endif
-#if GPS_MAX_RECEIVERS > 1
+#endif  // AP_GPS_GPS2_RAW_SENDING_ENABLED
+#if AP_GPS_GPS2_RTK_SENDING_ENABLED
     case MSG_GPS2_RTK:
         CHECK_PAYLOAD_SIZE(GPS2_RTK);
         AP::gps().send_mavlink_gps_rtk(chan, 1);
         break;
-#endif
-#endif  // AP_GPS_ENABLED
+#endif  // AP_GPS_GPS2_RTK_SENDING_ENABLED
+
 #if AP_AHRS_ENABLED
     case MSG_LOCAL_POSITION:
         CHECK_PAYLOAD_SIZE(LOCAL_POSITION_NED);
@@ -6481,13 +6496,6 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
         break;
 #endif
 
-#if AP_RANGEFINDER_ENABLED && APM_BUILD_TYPE(APM_BUILD_Rover)
-    case MSG_WATER_DEPTH:
-        CHECK_PAYLOAD_SIZE(WATER_DEPTH);
-        send_water_depth();
-        break;
-#endif
-
 #if HAL_HIGH_LATENCY2_ENABLED
     case MSG_HIGH_LATENCY2:
         CHECK_PAYLOAD_SIZE(HIGH_LATENCY2);
@@ -6517,6 +6525,14 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
         ret = send_relay_status();
         break;
 #endif
+
+    case MSG_AVAILABLE_MODES:
+        ret = send_available_modes();
+        break;
+
+    case MSG_AVAILABLE_MODES_MONITOR:
+        ret = send_available_mode_monitor();
+        break;
 
     default:
         // try_send_message must always at some stage return true for
