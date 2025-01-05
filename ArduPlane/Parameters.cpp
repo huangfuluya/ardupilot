@@ -1265,6 +1265,8 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: ../libraries/AC_PrecLand/AC_PrecLand.cpp
     AP_SUBGROUPINFO(precland, "PLND_", 35, ParametersG2, AC_PrecLand),
 #endif
+    //    GSCALAR(butterfly_freq,          "BF_FREQ",  20),
+    AP_GROUPINFO("BF_FREQ", 36, ParametersG2, butterfly_freq, 20),
 
     AP_GROUPEND
 };
