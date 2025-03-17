@@ -130,6 +130,8 @@ void SCS::syncWrite(uint8_t ID[], uint8_t IDN, uint8_t MemAddr, uint8_t *nDat, u
 	uint8_t mesLen = ((nLen+1)*IDN+4);
 	uint8_t Sum = 0;
 	uint8_t bBuf[7];
+	uint8_t msg_buf[100];
+	uint8_t msg_len;
 	bBuf[0] = 0xff;
 	bBuf[1] = 0xff;
 	bBuf[2] = 0xfe;
@@ -137,19 +139,30 @@ void SCS::syncWrite(uint8_t ID[], uint8_t IDN, uint8_t MemAddr, uint8_t *nDat, u
 	bBuf[4] = FEETECH_INST_SYNC_WRITE;
 	bBuf[5] = MemAddr;
 	bBuf[6] = nLen;
-	writeSCS(bBuf, 7);
+	// writeSCS(bBuf, 7);
+	for (uint8_t i = 0; i < 7; i++){
+		msg_buf[i] = bBuf[i];
+	}
+	msg_len = 7;
 
 	Sum = 0xfe + mesLen + FEETECH_INST_SYNC_WRITE + MemAddr + nLen;
 	uint8_t i, j;
 	for(i=0; i<IDN; i++){
-		writeSCS(ID[i]);
-		writeSCS(nDat+i*nLen, nLen);
+		// writeSCS(ID[i]);
+		// writeSCS(nDat+i*nLen, nLen);
+		msg_buf[msg_len++] = ID[i];
+		for (j=0; j < nLen; j++){
+			msg_buf[msg_len++] = nDat[i*nLen+j];
+		}
 		Sum += ID[i];
 		for(j=0; j<nLen; j++){
 			Sum += nDat[i*nLen+j];
 		}
 	}
-	writeSCS(~Sum);
+	// writeSCS(~Sum);
+	msg_buf[msg_len++] = ~Sum;
+	writeSCS(msg_buf,msg_len);
+
 	wFlushSCS();
 }
 

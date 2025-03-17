@@ -111,6 +111,7 @@ void SCSerial::rFlushSCS()
 
 void SCSerial::wFlushSCS()
 {
+	pSerial->flush();
 }
 
 #endif // AP_FEETECH_ENABLED

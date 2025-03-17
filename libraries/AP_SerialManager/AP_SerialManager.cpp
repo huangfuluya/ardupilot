@@ -516,7 +516,15 @@ void AP_SerialManager::init()
                     uart->set_unbuffered_writes(true);
                     uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
                     break;
-
+                case SerialProtocol_FEETECH:
+                    // Note baudrate is hardcoded to 115200
+                    state[i].baud.set_and_default(AP_SERIALMANAGER_FEETECH_BAUD / 1000);   // update baud param in case user looks at it
+                    uart->begin(state[i].baudrate(),
+                                         AP_SERIALMANAGER_FEETECH_BUFSIZE_RX,
+                                         AP_SERIALMANAGER_FEETECH_BUFSIZE_TX);
+                    uart->set_unbuffered_writes(true);
+                    uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
+                    break;
                 case SerialProtocol_ESCTelemetry:
                     // ESC telemetry protocol from BLHeli32 ESCs. Note that baudrate is hardcoded to 115200
                     state[i].baud.set_and_default(115200 / 1000);

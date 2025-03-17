@@ -46,8 +46,13 @@ private:
     void init(void);
 
     AP_Int8 start_chan;
+    AP_Int16 init_val;
     bool initialised;
     bool _trim_flag = true;
 };
+
+namespace AP {
+    AP_FeeTech* feetech();
+}
 
 #endif  // AP_FEETECH_ENABLED
