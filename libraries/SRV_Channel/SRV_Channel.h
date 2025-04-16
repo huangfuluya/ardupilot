@@ -22,7 +22,7 @@
 #include <AP_SBusOut/AP_SBusOut.h>
 #include <AP_BLHeli/AP_BLHeli.h>
 #include <AP_FETtecOneWire/AP_FETtecOneWire.h>
-
+#include <AP_Thrust_Stand/AP_Thrust_Stand.h>  //拉力台需要电机信号的输出，就放在这里了
 #include "SRV_Channel_config.h"
 
 static_assert(NUM_SERVO_CHANNELS <= 32, "More than 32 servos not supported");
@@ -610,6 +610,12 @@ private:
     // support for SBUS protocol
     AP_SBusOut sbus;
     static AP_SBusOut *sbus_ptr;
+#endif
+
+#if AP_THRUST_STAND_ENABLED
+    // support for Thrust Stand protocol
+    AP_Thrust_Stand thrust_stand;
+    static AP_Thrust_Stand *thrust_stand_ptr;
 #endif
 
 #if AP_ROBOTISSERVO_ENABLED

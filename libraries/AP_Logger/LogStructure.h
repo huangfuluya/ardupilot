@@ -143,6 +143,7 @@ const struct MultiplierStructure log_Multipliers[] = {
 #include <AP_RPM/LogStructure.h>
 #include <AC_Fence/LogStructure.h>
 #include <AP_Landing/LogStructure.h>
+#include <AP_Thrust_Stand/LogStructure.h>
 
 // structure used to define logging format
 // It is packed on ChibiOS to save flash space; however, this causes problems
@@ -1299,6 +1300,7 @@ LOG_STRUCTURE_FROM_NAVEKF \
 LOG_STRUCTURE_FROM_AHRS \
 LOG_STRUCTURE_FROM_HAL_CHIBIOS \
 LOG_STRUCTURE_FROM_RPM \
+LOG_STRUCTURE_FROM_F_AND_M \
 LOG_STRUCTURE_FROM_FENCE \
     { LOG_DF_FILE_STATS, sizeof(log_DSF), \
       "DSF", "QIHIIII", "TimeUS,Dp,Blk,Bytes,FMn,FMx,FAv", "s--b---", "F--0---" }, \
@@ -1425,6 +1427,7 @@ enum LogMessages : uint8_t {
     LOG_RCOUT2_MSG,
     LOG_RCOUT3_MSG,
     LOG_IDS_FROM_FENCE,
+    LOG_F_AND_M_MSG,
 
     _LOG_LAST_MSG_
 };

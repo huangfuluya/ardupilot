@@ -49,6 +49,10 @@ AP_Volz_Protocol *SRV_Channels::volz_ptr;
 AP_SBusOut *SRV_Channels::sbus_ptr;
 #endif
 
+#if AP_THRUST_STAND_ENABLED
+AP_Thrust_Stand *SRV_Channels::thrust_stand_ptr;
+#endif
+
 #if AP_ROBOTISSERVO_ENABLED
 AP_RobotisServo *SRV_Channels::robotis_ptr;
 #endif
@@ -217,6 +221,12 @@ const AP_Param::GroupInfo SRV_Channels::var_info[] = {
     // @Group: _FTW_
     // @Path: ../AP_FETtecOneWire/AP_FETtecOneWire.cpp
     AP_SUBGROUPINFO(fetteconwire, "_FTW_",  25, SRV_Channels, AP_FETtecOneWire),
+#endif
+
+#if AP_THRUST_STAND_ENABLED
+    // @Group: _FM_
+    // @Path: ../AP_Thrust_Stand/AP_Thrust_Stand.cpp
+    AP_SUBGROUPINFO(thrust_stand, "_FM_",  26, SRV_Channels, AP_Thrust_Stand),
 #endif
 
     // @Param: _DSHOT_RATE
@@ -392,6 +402,10 @@ SRV_Channels::SRV_Channels(void)
     sbus_ptr = &sbus;
 #endif
 
+#if AP_THRUST_STAND_ENABLED
+    thrust_stand_ptr = &thrust_stand;
+#endif
+
 #if AP_ROBOTISSERVO_ENABLED
     robotis_ptr = &robotis;
 #endif // AP_ROBOTISSERVO_ENABLED
@@ -523,6 +537,11 @@ void SRV_Channels::push()
 #if AP_SBUSOUTPUT_ENABLED
     // give sbus library a chance to update
     sbus_ptr->update();
+#endif
+
+#if AP_THRUST_STAND_ENABLED
+    // give thrust stand library a chance to update
+    thrust_stand_ptr->update();
 #endif
 
 #if AP_ROBOTISSERVO_ENABLED
