@@ -16,6 +16,8 @@ jobs:
           - CUAVv5Nano-bdshot
           - Pixhawk6C-bdshot
           - Pixhawk6X-bdshot
+          - ZeroOneX6
+          
 
     container:
       image: ardupilot/ardupilot-dev-chibios:latest #使用ardupilot/ardupilot-dev-chibios:latest镜像
