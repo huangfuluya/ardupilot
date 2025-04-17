@@ -982,6 +982,12 @@ const AP_Param::Info Plane::var_info[] = {
     // @Path: ../libraries/AP_Notify/AP_Notify.cpp
     GOBJECT(notify, "NTF_",  AP_Notify),
 
+
+    GOBJECT(phase_sensor,  "PHASE_",       AP_Phase_Sensor),
+
+    GOBJECT(yaw_sensor,     "YS_",         AP_Yaw_Sensor),
+
+    
     // @Group: 
     // @Path: Parameters.cpp
     GOBJECT(g2, "",  ParametersG2),

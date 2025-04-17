@@ -88,6 +88,9 @@
 #include "AP_ExternalControl_Plane.h"
 #endif
 
+#include <AP_Phase_Sensor/AP_Phase_Sensor.h>
+#include <AP_Yaw_Sensor/AP_Yaw_Sensor.h>
+
 #include <AC_PrecLand/AC_PrecLand_config.h>
 #if AC_PRECLAND_ENABLED
  # include <AC_PrecLand/AC_PrecLand.h>
@@ -255,6 +258,9 @@ private:
     // Optical flow sensor
     AP_OpticalFlow optflow;
 #endif
+
+    AP_Phase_Sensor phase_sensor;
+    AP_Yaw_Sensor yaw_sensor;
 
 #if HAL_RALLY_ENABLED
     // Rally Points

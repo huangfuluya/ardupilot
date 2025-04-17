@@ -82,6 +82,8 @@ public:
         SerialProtocol_IMUOUT = 46,
         // Reserving Serial Protocol 47 for SerialProtocol_IQ
         SerialProtocol_PPP = 48,
+        SerialProtocol_Phase_Sensor = 49,
+        SerialProtocol_Yaw_Sensor = 50,
         SerialProtocol_NumProtocols                    // must be the last value
     };
 

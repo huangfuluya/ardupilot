@@ -149,7 +149,8 @@ void Plane::init_ardupilot()
         optflow.init(-1);
     }
 #endif
-
+    phase_sensor.init();
+    yaw_sensor.init();
 // init cargo gripper
 #if AP_GRIPPER_ENABLED
     g2.gripper.init();
