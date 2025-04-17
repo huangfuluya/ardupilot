@@ -100,7 +100,7 @@
 
 #define UINT16_VALUE(hbyte, lbyte) (static_cast<uint16_t>(((hbyte)<<8)|(lbyte)))
 #define UINT32_VALUE(b3, b2, b1, b0) (static_cast<uint32_t>(((b3)<<24)|((b2)<<16)|((b1)<<8)|(b0)))
-
+#define INT32_VALUE(b3, b2, b1, b0) (static_cast<int32_t>(((b3)<<24)|((b2)<<16)|((b1)<<8)|(b0)))
 /*
  * See UNUSED_RESULT. The difference is that it receives @uniq_ as the name to
  * be used for its internal variable.
@@ -184,3 +184,7 @@ template <typename T> void BIT_CLEAR (T& value, uint8_t bitnumber) noexcept {
      ((value) &= ~((T)(1U) << (bitnumber)));
  }
 
+ template <typename T> void BIT_WRITE (T& value, uint8_t bitnumber, bool bitvalue) noexcept {
+    static_assert(std::is_integral<T>::value, "Integral required.");
+    ((bitvalue) ? BIT_SET(value, bitnumber) : BIT_CLEAR(value, bitnumber));
+}

@@ -8,7 +8,8 @@
  
  #include <AP_HAL/AP_HAL.h>
  #include <AP_Param/AP_Param.h>
-//  #include "libmodbus/modbus-rtu.h"
+ 
+#include "ModbusMaster.h"
  
  class AP_Thrust_Stand {
  public:
@@ -25,6 +26,8 @@
  
  private:
  
+     ModbusMaster modbus;
+
      AP_HAL::UARTDriver *thrust_stand_uart;
  
      void init(void);
@@ -37,18 +40,20 @@
 
      static AP_Thrust_Stand *_singleton;
 
-     float _Fx;
-     float _Fy;
-     float _Fz;
-     float _Mx;
-     float _My;
-     float _Mz;
+     int32_t _Fx;
+     int32_t _Fy;
+     int32_t _Fz;
+     int32_t _Mx;
+     int32_t _My;
+     int32_t _Mz;
 
      int8_t _port_num;
      uint32_t _baudrate;
      bool _setup_complete;
 
      bool check_uart(void);
+
+     void update_modbus_FM(void);
  };
 
  namespace AP {
@@ -56,5 +61,5 @@
  }  // namespace AP
  
  #endif  // AP_THRUST_STAND_ENABLED
- 
+
  

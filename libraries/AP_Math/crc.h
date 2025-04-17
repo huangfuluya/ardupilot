@@ -51,6 +51,8 @@ uint16_t crc16_ccitt_GDL90(const uint8_t *buf, uint32_t len, uint16_t crc);
 
 uint16_t calc_crc_modbus(const uint8_t *buf, uint16_t len);
 
+uint16_t crc16_update(uint16_t crc, uint8_t a);
+
 uint16_t crc_fletcher16(const uint8_t * buffer, uint32_t len);
 
 // generate 64bit FNV1a hash from buffer

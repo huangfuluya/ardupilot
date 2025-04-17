@@ -437,6 +437,22 @@ uint16_t calc_crc_modbus(const uint8_t *buf, uint16_t len)
     return crc;
 }
 
+uint16_t crc16_update(uint16_t crc, uint8_t a)
+{
+  int i;
+
+  crc ^= a;
+  for (i = 0; i < 8; ++i)
+  {
+    if (crc & 1)
+      crc = (crc >> 1) ^ 0xA001;
+    else
+      crc = (crc >> 1);
+  }
+
+  return crc;
+}
+
 // fletcher 16 implementation
 uint16_t crc_fletcher16(const uint8_t *buffer, uint32_t len) {
     uint16_t c0 = 0;

@@ -38,8 +38,17 @@
  #include <SRV_Channel/SRV_Channel.h>
  #include <GCS_MAVLink/GCS.h>
  #include <AP_Logger/AP_Logger.h>
+ #include <AP_Common/AP_Common.h>
  #include "LogStructure.h"
  
+#define THRUST_STAND_FX_REGISTER 0x0a00
+#define THRUST_STAND_FY_REGISTER 0x0a02
+#define THRUST_STAND_FZ_REGISTER 0x0a04
+#define THRUST_STAND_MX_REGISTER 0x0a06
+#define THRUST_STAND_MY_REGISTER 0x0a08
+#define THRUST_STAND_MZ_REGISTER 0x0a0a
+
+
  extern const AP_HAL::HAL& hal;
  
 
@@ -82,6 +91,8 @@
     }
     _baudrate = serial_manager->find_baudrate(AP_SerialManager::SerialProtocol_AHRS, 0);
     _port_num = serial_manager->find_portnum(AP_SerialManager::SerialProtocol_AHRS, 0);
+
+    modbus.begin(1, *thrust_stand_uart);
 
     if (!hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_Thrust_Stand::tick, void), "Thrust_Stand", 2048, AP_HAL::Scheduler::PRIORITY_UART, 0)) {
         AP_HAL::panic("Thrust Stand Failed to start update thread");
@@ -127,16 +138,32 @@
     const struct log_F_and_M pkt{
         LOG_PACKET_HEADER_INIT(LOG_F_AND_M_MSG),
         time_us     : AP_HAL::micros64(),
-        Fx        : _Fx,
-        Fy        : _Fy,
-        Fz        : _Fz,
-        Mx        : _Mx,
-        My        : _My,
-        Mz        : _Mz,
+        Fx        : float(_Fx/1000.0),
+        Fy        : float(_Fy/1000.0),
+        Fz        : float(_Fz/1000.0),
+        Mx        : float(_Mx/1000.0),
+        My        : float(_My/1000.0),
+        Mz        : float(_Mz/1000.0),
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
  }
+void AP_Thrust_Stand::update_modbus_FM(void){
+    if(modbus.readHoldingRegisters(THRUST_STAND_FX_REGISTER, 12)==0){
+        _Fx = INT32_VALUE(HIGHBYTE(modbus.getResponseBuffer(0)), LOWBYTE(modbus.getResponseBuffer(0)),
+                        HIGHBYTE(modbus.getResponseBuffer(1)), LOWBYTE(modbus.getResponseBuffer(1)));
+        _Fy = INT32_VALUE(HIGHBYTE(modbus.getResponseBuffer(2)), LOWBYTE(modbus.getResponseBuffer(2)),
+                        HIGHBYTE(modbus.getResponseBuffer(3)), LOWBYTE(modbus.getResponseBuffer(3)));
+        _Fz = INT32_VALUE(HIGHBYTE(modbus.getResponseBuffer(4)), LOWBYTE(modbus.getResponseBuffer(4)),
+                        HIGHBYTE(modbus.getResponseBuffer(5)), LOWBYTE(modbus.getResponseBuffer(5)));
+        _Mx = INT32_VALUE(HIGHBYTE(modbus.getResponseBuffer(6)), LOWBYTE(modbus.getResponseBuffer(6)),
+                        HIGHBYTE(modbus.getResponseBuffer(7)), LOWBYTE(modbus.getResponseBuffer(7)));
+        _My = INT32_VALUE(HIGHBYTE(modbus.getResponseBuffer(8)), LOWBYTE(modbus.getResponseBuffer(8)),
+                        HIGHBYTE(modbus.getResponseBuffer(9)), LOWBYTE(modbus.getResponseBuffer(9)));
+        _Mz = INT32_VALUE(HIGHBYTE(modbus.getResponseBuffer(10)), LOWBYTE(modbus.getResponseBuffer(10)),
+                        HIGHBYTE(modbus.getResponseBuffer(11)), LOWBYTE(modbus.getResponseBuffer(11)));
+    }
 
+}
  namespace AP {
      AP_Thrust_Stand *thrust_stand()
      {
@@ -145,5 +172,4 @@
  }  // namespace AP
 
  #endif  // AP_THRUST_STAND_ENABLED
- 
  
