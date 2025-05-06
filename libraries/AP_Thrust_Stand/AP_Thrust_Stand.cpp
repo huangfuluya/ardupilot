@@ -30,17 +30,18 @@
  *
  */
 
- #include "AP_Thrust_Stand.h"
- #if AP_THRUST_STAND_ENABLED
- 
- #include <AP_Math/AP_Math.h>
- #include <AP_SerialManager/AP_SerialManager.h>
- #include <SRV_Channel/SRV_Channel.h>
- #include <GCS_MAVLink/GCS.h>
- #include <AP_Logger/AP_Logger.h>
- #include <AP_Common/AP_Common.h>
- #include "LogStructure.h"
- 
+#include "AP_Thrust_Stand.h"
+
+#if AP_THRUST_STAND_ENABLED
+
+#include <AP_Math/AP_Math.h>
+#include <AP_SerialManager/AP_SerialManager.h>
+#include <SRV_Channel/SRV_Channel.h>
+#include <GCS_MAVLink/GCS.h>
+#include <AP_Logger/AP_Logger.h>
+#include <AP_Common/AP_Common.h>
+#include "LogStructure.h"
+
 #define THRUST_STAND_FX_REGISTER 0x0a00
 #define THRUST_STAND_FY_REGISTER 0x0a02
 #define THRUST_STAND_FZ_REGISTER 0x0a04
@@ -78,6 +79,7 @@
 
  void AP_Thrust_Stand::init(void)
  {
+    _setup_complete = false;
     //  // get the serial port for the thrust stand
      AP_SerialManager *serial_manager = AP_SerialManager::get_singleton();
      if (!serial_manager) {
@@ -86,11 +88,11 @@
      thrust_stand_uart = serial_manager->find_serial(AP_SerialManager::SerialProtocol_ThrustStand,0);
  
      if (!thrust_stand_uart) {
-        GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "InertialLabs ExternalAHRS no UART");
+        GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "Thrust Stand serial port not found");
         return;
     }
-    _baudrate = serial_manager->find_baudrate(AP_SerialManager::SerialProtocol_AHRS, 0);
-    _port_num = serial_manager->find_portnum(AP_SerialManager::SerialProtocol_AHRS, 0);
+    _baudrate = serial_manager->find_baudrate(AP_SerialManager::SerialProtocol_ThrustStand, 0);
+    _port_num = serial_manager->find_portnum(AP_SerialManager::SerialProtocol_ThrustStand, 0);
 
     modbus.begin(1, *thrust_stand_uart);
 
@@ -98,25 +100,45 @@
         AP_HAL::panic("Thrust Stand Failed to start update thread");
     }
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Thrust Stand initialised");
+    _setup_complete = true;
  }
  void AP_Thrust_Stand::update()
  {
-    //do nothing, I can do anything in the tick
+    if (!_setup_complete) {
+        init();
+    }
+
+    // //do nothing, I can do anything in the tick
+    // static uint32_t last_time_stamps = AP_HAL::millis();
+    // if (AP_HAL::millis() - last_time_stamps > 1000) {
+    //     last_time_stamps = AP_HAL::millis();
+    //     // update_modbus_FM();
+    //     gcs().send_text(MAV_SEVERITY_INFO, "update running");
+    //     // log_thrust_and_torque();
+    // }
+    
  }
 
  void AP_Thrust_Stand::tick(void)
  {
     // Open port in the thread
     thrust_stand_uart->begin(_baudrate, 1024, 512);
-
+    uint32_t dt = (uint32_t)(round(1000 / _rate));
+    dt = constrain_int32(dt, 1, 20000);
     /*
       we assume the user has already configured the device
      */
-
+    static uint32_t last_time_stamps = AP_HAL::millis();
     _setup_complete = true;
     while (true) {
         if (!check_uart()) {
             hal.scheduler->delay_microseconds(250);
+        }
+        if (AP_HAL::millis() - last_time_stamps > dt) {
+            last_time_stamps = AP_HAL::millis();
+            update_modbus_FM();
+            gcs().send_text(MAV_SEVERITY_INFO, "tick running");
+            log_thrust_and_torque();
         }
     }
  }
