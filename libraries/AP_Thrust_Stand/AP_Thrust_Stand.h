@@ -1,9 +1,7 @@
 
 #pragma once
 
-#ifndef AP_THRUST_STAND_ENABLED
-#define AP_THRUST_STAND_ENABLED 1
-#endif
+#include "AP_Thrust_Stand_config.h"
 
 #if AP_THRUST_STAND_ENABLED
 
@@ -11,6 +9,8 @@
 #include <AP_Param/AP_Param.h>
 
 #include "ModbusMaster.h"
+#include <AP_Networking/AP_Networking_address.h>
+#include <AP_HAL/utility/Socket.h>
 
 class AP_Thrust_Stand
 {
@@ -26,7 +26,14 @@ public:
 
     void update();
 
+    // 查找完整帧的函数
+    char* findFrameEnd(char* buffer, int* frameLength);
+    bool parseFrame(char* data, int32_t& Fx, int32_t& Fy, int32_t& Fz, int32_t& Mx, int32_t& My, int32_t& Mz);
 private:
+    // 用于存储接收到的数据
+    char _recv_buffer[THRUST_STAND_RECV_BUFFER_SIZE];
+    uint8_t _bufferOffset = 0;
+
     ModbusMaster modbus;
 
     AP_HAL::UARTDriver *thrust_stand_uart;
@@ -37,7 +44,8 @@ private:
 
     void log_thrust_and_torque(void) const;
 
-    AP_Int16 _rate;
+    AP_Float _rate;
+    AP_Int32 _mavlink_dt;
 
     static AP_Thrust_Stand *_singleton;
 
@@ -54,7 +62,7 @@ private:
 
     bool check_uart(void);
 
-    void update_modbus_FM(void);
+    bool update_modbus_FM(SocketAPM* sock);
 };
 
  namespace AP {

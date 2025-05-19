@@ -40,6 +40,12 @@ public:
 
     // update task, called at 10Hz
     void update();
+#if AP_NETWORKING_THRUST_STAND_ENABLED
+    const char* get_thrust_stand_ip_str()
+    {
+        return param.thrust_stand_ipaddr.get_str();
+    }
+#endif
 
     static AP_Networking *get_singleton(void)
     {
@@ -182,6 +188,10 @@ private:
 #if AP_NETWORKING_TESTS_ENABLED
         AP_Int32 tests;
         AP_Networking_IPV4 test_ipaddr{AP_NETWORKING_TEST_IP};
+#endif
+
+#if AP_NETWORKING_THRUST_STAND_ENABLED
+        AP_Networking_IPV4 thrust_stand_ipaddr{AP_NETWORKING_THRUST_STAND_IP};
 #endif
 
 #if AP_NETWORKING_PPP_GATEWAY_ENABLED

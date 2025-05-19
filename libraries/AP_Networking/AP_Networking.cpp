@@ -38,12 +38,12 @@ const AP_Param::GroupInfo AP_Networking::var_info[] = {
     // @Values: 0:Disable,1:Enable
     // @RebootRequired: True
     // @User: Advanced
-    AP_GROUPINFO_FLAGS("ENABLE",  1, AP_Networking, param.enabled, 0, AP_PARAM_FLAG_ENABLE),
+    AP_GROUPINFO_FLAGS("ENABLE", 1, AP_Networking, param.enabled, 0, AP_PARAM_FLAG_ENABLE),
 
 #if AP_NETWORKING_CONTROLS_HOST_IP_SETTINGS_ENABLED
     // @Group: IPADDR
     // @Path: AP_Networking_address.cpp
-    AP_SUBGROUPINFO(param.ipaddr, "IPADDR", 2,  AP_Networking, AP_Networking_IPV4),
+    AP_SUBGROUPINFO(param.ipaddr, "IPADDR", 2, AP_Networking, AP_Networking_IPV4),
 
     // @Param: NETMASK
     // @DisplayName: IP Subnet mask
@@ -51,7 +51,7 @@ const AP_Param::GroupInfo AP_Networking::var_info[] = {
     // @Range: 0 32
     // @RebootRequired: True
     // @User: Advanced
-    AP_GROUPINFO("NETMASK", 3,  AP_Networking,    param.netmask,   AP_NETWORKING_DEFAULT_NETMASK),
+    AP_GROUPINFO("NETMASK", 3, AP_Networking, param.netmask, AP_NETWORKING_DEFAULT_NETMASK),
 
 #if AP_NETWORKING_DHCP_AVAILABLE
     // @Param: DHCP
@@ -60,16 +60,16 @@ const AP_Param::GroupInfo AP_Networking::var_info[] = {
     // @Values: 0:Disable, 1:Enable
     // @RebootRequired: True
     // @User: Advanced
-    AP_GROUPINFO("DHCP", 4,  AP_Networking,    param.dhcp,   AP_NETWORKING_DEFAULT_DHCP_ENABLE),
+    AP_GROUPINFO("DHCP", 4, AP_Networking, param.dhcp, AP_NETWORKING_DEFAULT_DHCP_ENABLE),
 #endif
 
     // @Group: GWADDR
     // @Path: AP_Networking_address.cpp
-    AP_SUBGROUPINFO(param.gwaddr, "GWADDR", 5,  AP_Networking, AP_Networking_IPV4),
+    AP_SUBGROUPINFO(param.gwaddr, "GWADDR", 5, AP_Networking, AP_Networking_IPV4),
 
     // @Group: MACADDR
     // @Path: AP_Networking_macaddr.cpp
-    AP_SUBGROUPINFO(param.macaddr, "MACADDR", 6,  AP_Networking, AP_Networking_MAC),
+    AP_SUBGROUPINFO(param.macaddr, "MACADDR", 6, AP_Networking, AP_Networking_MAC),
 #endif // AP_NETWORKING_CONTROLS_HOST_IP_SETTINGS_ENABLED
 
 #if AP_NETWORKING_TESTS_ENABLED
@@ -79,29 +79,33 @@ const AP_Param::GroupInfo AP_Networking::var_info[] = {
     // @Bitmask: 0:UDP echo test,1:TCP echo test, 2:TCP discard test
     // @RebootRequired: True
     // @User: Advanced
-    AP_GROUPINFO("TESTS", 7,  AP_Networking,    param.tests,   0),
+    AP_GROUPINFO("TESTS", 7, AP_Networking, param.tests, 0),
 
     // @Group: TEST_IP
     // @Path: AP_Networking_address.cpp
-    AP_SUBGROUPINFO(param.test_ipaddr, "TEST_IP", 8,  AP_Networking, AP_Networking_IPV4),
+    AP_SUBGROUPINFO(param.test_ipaddr, "TEST_IP", 8, AP_Networking, AP_Networking_IPV4),
 #endif
-
     // @Param: OPTIONS
     // @DisplayName: Networking options
     // @Description: Networking options
     // @Bitmask: 0:EnablePPP Ethernet gateway
     // @RebootRequired: True
     // @User: Advanced
-    AP_GROUPINFO("OPTIONS", 9,  AP_Networking,    param.options, 0),
+    AP_GROUPINFO("OPTIONS", 9, AP_Networking, param.options, 0),
 
 #if AP_NETWORKING_PPP_GATEWAY_ENABLED
     // @Group: REMPPP_IP
     // @Path: AP_Networking_address.cpp
-    AP_SUBGROUPINFO(param.remote_ppp_ip, "REMPPP_IP", 10,  AP_Networking, AP_Networking_IPV4),
+    AP_SUBGROUPINFO(param.remote_ppp_ip, "REMPPP_IP", 10, AP_Networking, AP_Networking_IPV4),
 #endif
-    
-    AP_GROUPEND
-};
+
+#if AP_NETWORKING_THRUST_STAND_ENABLED
+    // @Group: TEST_IP
+    // @Path: AP_Networking_address.cpp
+    AP_SUBGROUPINFO(param.thrust_stand_ipaddr, "FM_IP", 11, AP_Networking, AP_Networking_IPV4),
+#endif
+
+    AP_GROUPEND};
 
 /*
   constructor
