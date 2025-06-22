@@ -49,6 +49,10 @@ AP_Volz_Protocol *SRV_Channels::volz_ptr;
 AP_SBusOut *SRV_Channels::sbus_ptr;
 #endif
 
+# if AP_STEPMOTOR_ENABLED
+AP_StepMotor *SRV_Channels::stepmotor_ptr;
+#endif
+
 #if AP_ROBOTISSERVO_ENABLED
 AP_RobotisServo *SRV_Channels::robotis_ptr;
 #endif
@@ -249,6 +253,12 @@ const AP_Param::GroupInfo SRV_Channels::var_info[] = {
     // @Bitmask: 0:RCIN1Scaled, 1:RCIN2Scaled, 2:RCIN3Scaled, 3:RCIN4Scaled, 4:RCIN5Scaled, 5:RCIN6Scaled, 6:RCIN7Scaled, 7:RCIN8Scaled, 8:RCIN9Scaled, 9:RCIN10Scaled, 10:RCIN11Scaled, 11:SRCIN12Scaled, 12:RCIN13Scaled, 13:RCIN14Scaled, 14:RCIN15Scaled, 15:RCIN16Scaled
     // @User: Advanced
     AP_GROUPINFO("_RC_FS_MSK", 44, SRV_Channels, rc_fs_mask, 0),
+
+    #if AP_STEPMOTOR_ENABLED
+        // @Group: _STM_
+        // @Path: ../AP_StepMotor/AP_StepMotor.cpp
+        AP_SUBGROUPINFO(stepmotor, "_STM_",  45, SRV_Channels, AP_StepMotor),
+    #endif
  
 #if (NUM_SERVO_CHANNELS >= 17)
     // @Param: _32_ENABLE
@@ -392,6 +402,10 @@ SRV_Channels::SRV_Channels(void)
     sbus_ptr = &sbus;
 #endif
 
+#if AP_STEPMOTOR_ENABLED
+    stepmotor_ptr = &stepmotor;
+#endif
+
 #if AP_ROBOTISSERVO_ENABLED
     robotis_ptr = &robotis;
 #endif // AP_ROBOTISSERVO_ENABLED
@@ -523,6 +537,10 @@ void SRV_Channels::push()
 #if AP_SBUSOUTPUT_ENABLED
     // give sbus library a chance to update
     sbus_ptr->update();
+#endif
+#if AP_STEPMOTOR_ENABLED
+    // give step motor library a chance to update
+    stepmotor_ptr->update();
 #endif
 
 #if AP_ROBOTISSERVO_ENABLED

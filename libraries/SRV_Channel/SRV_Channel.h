@@ -20,6 +20,7 @@
 #include <AP_Volz_Protocol/AP_Volz_Protocol.h>
 #include <AP_RobotisServo/AP_RobotisServo.h>
 #include <AP_SBusOut/AP_SBusOut.h>
+#include <AP_StepMotor/AP_StepMotor.h>
 #include <AP_BLHeli/AP_BLHeli.h>
 #include <AP_FETtecOneWire/AP_FETtecOneWire.h>
 
@@ -610,6 +611,12 @@ private:
     // support for SBUS protocol
     AP_SBusOut sbus;
     static AP_SBusOut *sbus_ptr;
+#endif
+
+#if AP_STEPMOTOR_ENABLED
+    // support for stepper motors
+    AP_StepMotor stepmotor;
+    static AP_StepMotor *stepmotor_ptr;
 #endif
 
 #if AP_ROBOTISSERVO_ENABLED
