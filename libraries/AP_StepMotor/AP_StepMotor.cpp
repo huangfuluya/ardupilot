@@ -6,6 +6,8 @@
 
 #include <GCS_MAVLink/GCS.h>
 #define STEP_MOTOR_DEFAULT_CHAN 0
+extern const AP_HAL::HAL& hal;
+
 const AP_Param::GroupInfo AP_StepMotor::var_info[] = {
     // @Param: CHAN
     // @DisplayName: step motor use chan value
@@ -23,6 +25,7 @@ const AP_Param::GroupInfo AP_StepMotor::var_info[] = {
 
     AP_GROUPINFO("ACC",    5, AP_StepMotor, _acc,       0), // default acceleration (0 means direct start without ramp),0~255
 
+    AP_GROUPINFO("DIV",    6, AP_StepMotor, _divide,    64), // default divide factor for stepper motor,16 is 1.8 degree stepper motor
     AP_GROUPEND
 };
 
@@ -49,60 +52,104 @@ void AP_StepMotor::init()
         return;
     }
     _step_motor_uart->begin(115200, 128, 128); // 初始化UART，波特率115200，接收和发送缓冲区大小128字节
-    _initialised = true;
+    // 启用一个单独的线程来处理步进电机控制
 
+    // hal.scheduler->register_io_process(FUNCTOR_BIND_MEMBER(&AP_StepMotor::update_thread, void));
+    if (hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_StepMotor::update_thread, void), "StepMotor", 1024, AP_HAL::Scheduler::PRIORITY_IO, 0))
+    {
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "StepMotor thread created successfully");
+        _initialised = true;
+    }
+}
+void AP_StepMotor::update_thread(void)
+{
+    // static uint32_t last_gcs_send_time = 0;
+    // static uint32_t last_step_motor_send_time = 0;
+    while (true)
+    {
+        // if (AP_HAL::millis() - last_step_motor_send_time > (uint32_t)_dt_send)
+        // {
+            
+        // }
+        hal.scheduler->delay(_dt_send);
+        // read_bytes();
+        send(_output_chan);
+        // last_step_motor_send_time = AP_HAL::millis();
+    }
 }
 void AP_StepMotor::update()
 {
     if (!_initialised) {
-        _initialised = true;
+        // _initialised = true;
         init();
+        return;
     }
     if (_step_motor_uart == nullptr) {
         return;
     }
-    if (_output_chan < 0 || _output_chan > 14) {
+    if (_output_chan < 1 || _output_chan > 14) {
         return; // 无效通道
     }
-    // read_bytes();
-    send(_output_chan);
+
 }
-void AP_StepMotor::read_bytes()
+void AP_StepMotor::read_bytes(void)
 {
     if (_step_motor_uart == nullptr) {
         return; // UART未初始化
     }
-    uint8_t buf[128] = {0};
-    int len = _step_motor_uart->read(buf, sizeof(buf));
-    if (len > 0) {
-        // 处理接收到的数据
-        // 这里可以添加解析逻辑
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Received %d bytes from Step Motor UART", len);
+
+    //清空接收命令数组
+    memset(_rxCmd, 0, sizeof(_rxCmd));
+    _rxCmdLen = 0; // 重置接收命令长度
+    //清空接收缓存区的内容
+    while(_step_motor_uart->available() > 0) {
+        _step_motor_uart->read();
     }
+    // 读取电机实时位置
+    Emm_V5_Read_Sys_Params(1, S_CPOS);
+    hal.scheduler->delay(1);
+    // 等待返回命令，命令数据缓存在数组rxCmd上，长度为rxCount
+    Emm_V5_Receive_Data(_rxCmd, &_rxCmdLen);
+
+    if (_rxCmdLen > 0) {
+        // 处理接收到的命令
+        //打印_rxCmd
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Recv:%d bytes", _rxCmdLen);
+        if(packet_cur_deg(_rxCmd, _rxCmdLen, _cur_deg))
+        {
+            // 发送到GCS
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Current Position: %.2f degrees", _cur_deg);
+            // mavlink_debug_vect_t debug_vect;
+            // debug_vect.x = _cur_deg;
+            // debug_vect.y = _des_deg;
+            // debug_vect.z = 0.0f;
+            // strncpy(debug_vect.name, "cur,des,nu", sizeof(debug_vect.name) - 1);
+            // debug_vect.name[sizeof(debug_vect.name) - 1] = '\0'; // 确保字符串以null结尾
+            // mavlink_msg_debug_vect_send_struct(
+            //     mavlink_channel_t::MAVLINK_COMM_0,
+            //     &debug_vect
+            // );
+        }
+        else
+        {
+            //将_rxCmd按16进制打印出来
+
+            for (uint8_t i = 0; i < _rxCmdLen; ++i) {
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "0x%02X ", _rxCmd[i]);
+            }
+        } 
+    }
+
+
 }
 void AP_StepMotor::send(uint8_t chan)
 {
+    float chan_scaled = SRV_Channels::get_output_norm(SRV_Channels::channel_function(chan - 1)); // 确保通道已初始化,通道编号从0开始
+    _des_deg = (chan_scaled + 1.0) * _scale * 360.0f;                                            // 将通道值转换为角度，范围-180到180度
+    uint32_t clk = (uint32_t)(_des_deg * (float)(_divide) / 1.8f);                                         // 将通道值转换为脉冲数，一圈的脉冲数为360/1.8步距角*256细分数=51200脉冲
+    // 位置模式：速度1000RPM，加速度0（不使用加减速直接启动），脉冲数3200（16细分下发送3200个脉冲电机转一圈），相对运动
 
-    if (chan < 1 || chan > 14) {
-        return; // invalid channel
-    }
-    if (!_initialised) {
-        init(); // 确保初始化
-        return; // 如果初始化失败，直接返回
-    }
-
-    // static uint32_t last_gcs_send_time = 0;
-    static uint32_t last_step_motor_send_time = 0;
-
-    if (AP_HAL::millis() - last_step_motor_send_time > _dt_send)
-    {
-        float chan_scaled = SRV_Channels::get_output_norm(SRV_Channels::channel_function(chan-1)); // 确保通道已初始化,通道编号从0开始
-        uint32_t clk = (uint32_t)((chan_scaled + 1.0) * _scale * 51200);                                   // 将通道值转换为脉冲数，一圈的脉冲数为360/1.8步距角*256细分数=51200脉冲
-        // 位置模式：速度1000RPM，加速度0（不使用加减速直接启动），脉冲数3200（16细分下发送3200个脉冲电机转一圈），相对运动
-
-        Emm_V5_Pos_Control(1, 0, _vel_rpm, _acc, clk, 1, 0);
-        last_step_motor_send_time = AP_HAL::millis();
-    }
+    Emm_V5_Pos_Control(1, 0, _vel_rpm, _acc, clk, 1, 0);
 }
 
 /**
@@ -137,10 +184,35 @@ void AP_StepMotor::Emm_V5_Pos_Control(uint8_t addr, uint8_t dir, uint16_t vel, u
   
   // 发送命令
   _step_motor_uart->write(cmd, 13);
-//   _step_motor_uart->flush(); // 确保数据发送完成
+//   hal.scheduler->delay_microseconds(5); // 等待1微秒，确保数据发送完毕
+//   _step_motor_uart->flush(); // 确保数据发送完毕
+//   hal.scheduler->delay_microseconds(5); // 等待1微秒，确保数据发送完毕
 }
 
+bool AP_StepMotor::packet_cur_deg(uint8_t *rxCmd, uint8_t rxCount, float &deg)
+{
+    uint32_t pos = 0; // 位置值
+    if (rxCmd[0] == 1 && rxCmd[1] == 0x36 && rxCount == 8)
+    {
 
+        // 拼接成uint32_t类型
+        pos = (uint32_t)(((uint32_t)rxCmd[3] << 24) |
+                         ((uint32_t)rxCmd[4] << 16) |
+                         ((uint32_t)rxCmd[5] << 8) |
+                         ((uint32_t)rxCmd[6] << 0));
+
+        // 转换成角度
+        deg = (float)pos * 360.0f / 65536.0f;
+
+        // 符号
+        if (rxCmd[2])
+        {
+            deg = -deg;
+        }
+        return true; // 成功解析
+    }
+    return false; // 解析失败
+}
 /**
   * @brief    读取系统参数
   * @param    addr  ：电机地址
@@ -178,6 +250,9 @@ void AP_StepMotor::Emm_V5_Read_Sys_Params(uint8_t addr, SysParams_t s)
   
   // 发送命令
   _step_motor_uart->write(cmd, i);
+//   hal.scheduler->delay_microseconds(5); // 等待1微秒，确保数据发送完毕
+//   _step_motor_uart->flush(); // 确保数据发送完毕
+//   hal.scheduler->delay_microseconds(5); // 等待1微秒，确保数据发送完毕
 }
 AP_StepMotor* AP_StepMotor::get_singleton()
 {
@@ -185,6 +260,47 @@ AP_StepMotor* AP_StepMotor::get_singleton()
         _singleton = new AP_StepMotor();
     }
     return _singleton;
+}
+
+/**
+  * @brief    接收数据
+  * @param    rxCmd   : 接收到的数据缓存在该数组
+  * @param    rxCount : 接收到的数据长度
+  * @retval   无
+  */
+void AP_StepMotor::Emm_V5_Receive_Data(uint8_t *rxCmd, uint8_t *rxCount)
+{
+    int i = 0;
+    unsigned long lTime;                    // 上一时刻的时间
+    unsigned long cTime;                    // 当前时刻的时间
+
+    // 记录当前的时间
+    lTime = AP_HAL::millis();
+
+    // 开始接收数据
+    while (1)
+    {
+        if (_step_motor_uart->available() > 0) // 串口有数据进来
+        {
+            if (i <= 128) // 防止数组溢出，该值需要小于数组的长度
+            {
+                rxCmd[i++] = _step_motor_uart->read(); // 接收数据
+
+                lTime = AP_HAL::millis();                 // 更新上一时刻的时间
+            }
+        }
+        else // 串口有没有数据
+        {
+            cTime = AP_HAL::millis();                   // 获取当前时刻的时间
+
+            if((int)(cTime - lTime) > 0)      // 100毫秒内串口没有数据进来，就判定一帧数据接收结束
+            // if (1)
+            {
+                *rxCount = i; // 数据长度
+                break;        // 退出while(1)循环
+            }
+        }
+    }
 }
 
 AP_StepMotor *AP_StepMotor::_singleton = nullptr;

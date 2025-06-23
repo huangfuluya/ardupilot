@@ -20,6 +20,7 @@ public:
 
     void init(void);
     void send(uint8_t chan);
+    void update_thread(void);
     void update(void);
     static AP_StepMotor *get_singleton();
 
@@ -49,13 +50,22 @@ private:
     bool _initialised;
 
     void Emm_V5_Pos_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, uint32_t clk, bool raF, bool snF);
+    void Emm_V5_Receive_Data(uint8_t *rxCmd, uint8_t *rxCount);
     void Emm_V5_Read_Sys_Params(uint8_t addr, SysParams_t s);
+    bool packet_cur_deg(uint8_t *rxCmd, uint8_t rxCount, float& deg);
     void read_bytes(void);
 
     AP_Int16 _dt_send;
     AP_Float _scale;
     AP_Int16 _vel_rpm;
     AP_Int16 _acc;
+    AP_Int8 _divide;
+
+    uint8_t _rxCmd[128] = {0}; // 接收命令
+    uint8_t _rxCmdLen = 0; // 接收命令长度
+
+    float _des_deg = 0.0f; // 目标角度
+    float _cur_deg = 0.0f; // 当前角度
 };
 
 namespace AP {
