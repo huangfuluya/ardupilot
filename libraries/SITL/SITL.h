@@ -251,6 +251,10 @@ public:
     AP_Int8 sfml_joystick_axis[8];
 #endif
 
+    AP_Float launch_velx;
+    AP_Float launch_velz;
+    AP_Float launch_time; // time in seconds to launch
+
     // baro parameters
     class BaroParm {
     public:

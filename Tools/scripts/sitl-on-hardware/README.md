@@ -14,7 +14,8 @@ Plane can also be simulated:
 ::
 
 	cd $HOME/ardupilot
-    ./Tools/scripts/sitl-on-hardware/sitl-on-hw.py --board MatekH743 --vehicle plane
+    ./Tools/scripts/sitl-on-hardware/sitl-on-hw.py --board CubeOrange --vehicle plane
+	./Tools/scripts/sitl-on-hardware/sitl-on-hw.py --board cuav-x7 --vehicle plane
 
 and quadplane:
 

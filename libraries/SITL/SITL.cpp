@@ -647,6 +647,9 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
     // @Path: ./SIM_Vicon.cpp
     AP_SUBGROUPINFO(vicon, "VICON_", 56, SIM, ViconParms),
 
+    AP_GROUPINFO("LUCH_VZ",    57, SIM, launch_velx, 25.0f),
+    AP_GROUPINFO("LUCH_VX",    58, SIM, launch_velz, 10.0f),
+    AP_GROUPINFO("LUCH_T",    59, SIM, launch_time, 4.0f),
 #ifdef SFML_JOYSTICK
     AP_SUBGROUPEXTENSION("",      63, SIM,  var_sfml_joystick),
 #endif // SFML_JOYSTICK

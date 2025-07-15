@@ -39,6 +39,8 @@ Plane::Plane(const char *frame_str) :
     }
 
     mass = 2.0f;
+    coefficient.c_drag_p = 0.05;
+    have_launcher = true;
 
     /*
        scaling from motor power to Newtons. Allows the plane to hold
@@ -484,9 +486,24 @@ void Plane::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel
             if (launch_start_ms == 0) {
                 launch_start_ms = now;
             }
-            if (now - launch_start_ms < launch_time*1000) {
-                force.x += mass * launch_accel;
-                force.z += mass * launch_accel/3;
+            if (now - launch_start_ms < sitl->launch_time * 1000)
+            {
+                // zero roll pitch and yaw
+                dcm.from_euler(0.0f, 0.0f, 0.0f);
+                // X, Y movement tracks ground movement
+                velocity_ef.x = 0.0f;
+                velocity_ef.y = 0.0f;
+                velocity_ef.z = -sitl->launch_velz;
+                gyro.zero();
+                use_smoothing = true;
+            }else if (now - launch_start_ms < 2*sitl->launch_time * 1000)
+            {
+                velocity_ef.x = sitl->launch_velx;
+                velocity_ef.y = 0;
+                velocity_ef.z = 0;
+                dcm.from_euler(0.0f, 0.0f, 0.0f);
+                gyro.zero();
+                use_smoothing = true;
             }
         } else {
             // allow reset of catapult
