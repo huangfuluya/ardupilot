@@ -22,6 +22,7 @@
 #endif
 
 #include <AP_Quicktune/AP_Quicktune.h>
+#include <AP_Mission/AP_Mission_ChangeDetector.h>
 
 class AC_PosControl;
 class AC_AttitudeControl_Multi;
@@ -287,7 +288,8 @@ public:
 #if AP_PLANE_GLIDER_PULLUP_ENABLED
     bool in_pullup() const { return pullup.in_pullup(); }
 #endif
-
+    // Mission change detector
+    AP_Mission_ChangeDetector mis_change_detector;
 protected:
 
     bool _enter() override;

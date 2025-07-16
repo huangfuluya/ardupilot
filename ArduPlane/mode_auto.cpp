@@ -26,7 +26,8 @@ bool ModeAuto::_enter()
     plane.next_WP_loc = plane.prev_WP_loc = plane.current_loc;
     // start or resume the mission, based on MIS_AUTORESET
     plane.mission.start_or_resume();
-
+    // initialise mission change check (ignore results)
+    IGNORE_RETURN(mis_change_detector.check_for_mission_change());
     if (hal.util->was_watchdog_armed()) {
         if (hal.util->persistent_data.waypoint_num != 0) {
             gcs().send_text(MAV_SEVERITY_INFO, "Watchdog: resume WP %u", hal.util->persistent_data.waypoint_num);
@@ -118,6 +119,23 @@ void ModeAuto::update()
         plane.calc_nav_roll();
         plane.calc_nav_pitch();
         plane.calc_throttle();
+    }
+    // check for mission changes
+    if (mis_change_detector.check_for_mission_change())
+    {
+        // if mission is running restart the current command if it is a waypoint command
+        if ((plane.mission.state() == AP_Mission::MISSION_RUNNING))
+        {
+            if (plane.mission.set_current_cmd(1))
+            {
+                gcs().send_text(MAV_SEVERITY_CRITICAL, "Auto mission changed, restarted command");
+            }
+            else
+            {
+                // failed to restart mission for some reason
+                gcs().send_text(MAV_SEVERITY_CRITICAL, "Auto mission changed but failed to restart command");
+            }
+        }
     }
 }
 
