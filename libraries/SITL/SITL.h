@@ -251,8 +251,8 @@ public:
     AP_Int8 sfml_joystick_axis[8];
 #endif
 
-    AP_Float launch_velx;
-    AP_Float launch_velz;
+    AP_Float launch_yaw;
+    AP_Float launch_vel;
     AP_Float launch_time; // time in seconds to launch
     AP_Int16 launch_posx_offset; // launch position offset in X
     AP_Int16 launch_posy_offset; // launch position offset in Y

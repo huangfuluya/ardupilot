@@ -647,8 +647,8 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
     // @Path: ./SIM_Vicon.cpp
     AP_SUBGROUPINFO(vicon, "VICON_", 56, SIM, ViconParms),
 
-    AP_GROUPINFO("LUCH_VZ",    57, SIM, launch_velz, 25.0f),
-    AP_GROUPINFO("LUCH_VX",    58, SIM, launch_velx, 10.0f),
+    AP_GROUPINFO("LUCH_YAW",    57, SIM, launch_yaw, 0.0f),
+    AP_GROUPINFO("LUCH_VEL",    58, SIM, launch_vel, 10.0f),
     AP_GROUPINFO("LUCH_T",    59, SIM, launch_time, 4.0f),
 
     AP_GROUPINFO("LUCH_PX",    60, SIM, launch_posx_offset, 25),

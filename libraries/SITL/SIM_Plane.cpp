@@ -494,10 +494,10 @@ void Plane::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel
             if (now - launch_start_ms < sitl->launch_time * 1000)
             {
                 // zero roll pitch and yaw
-                dcm.from_euler(0.0f, 0.0f, 0.0f);
+                dcm.from_euler(0.0f, 0.0f, radians(sitl->launch_yaw));
                 // X, Y movement tracks ground movement
-                velocity_ef.x = sitl->launch_velx;
-                velocity_ef.y = 0.0f;
+                velocity_ef.x = sitl->launch_vel* cosf(radians(sitl->launch_yaw));
+                velocity_ef.y = sitl->launch_vel* sinf(radians(sitl->launch_yaw));
                 velocity_ef.z = 0;
                 gyro.zero();
                 use_smoothing = true;
