@@ -476,7 +476,7 @@ void Plane::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel
     
     Vector3f force = getForce(aileron, elevator, rudder);
     rot_accel = getTorque(aileron, elevator, rudder, thrust, force);
-
+    static bool last_trigger_flag = false;
     if (have_launcher) {
         /*
           simple simulation of a launcher
@@ -486,22 +486,19 @@ void Plane::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel
             if (launch_start_ms == 0) {
                 launch_start_ms = now;
             }
+            if (!last_trigger_flag) {//上次没有触发，这次进行了触发
+                position.x = sitl->launch_posx_offset;
+                position.y = sitl->launch_posy_offset;
+                position.z = -abs(sitl->launch_posz_offset);
+            }
             if (now - launch_start_ms < sitl->launch_time * 1000)
             {
                 // zero roll pitch and yaw
                 dcm.from_euler(0.0f, 0.0f, 0.0f);
                 // X, Y movement tracks ground movement
-                velocity_ef.x = 0.0f;
-                velocity_ef.y = 0.0f;
-                velocity_ef.z = -sitl->launch_velz;
-                gyro.zero();
-                use_smoothing = true;
-            }else if (now - launch_start_ms < 2*sitl->launch_time * 1000)
-            {
                 velocity_ef.x = sitl->launch_velx;
-                velocity_ef.y = 0;
+                velocity_ef.y = 0.0f;
                 velocity_ef.z = 0;
-                dcm.from_euler(0.0f, 0.0f, 0.0f);
                 gyro.zero();
                 use_smoothing = true;
             }
@@ -509,6 +506,7 @@ void Plane::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel
             // allow reset of catapult
             launch_start_ms = 0;
         }
+        last_trigger_flag = launch_triggered;
     }
     
     // simulate engine RPM

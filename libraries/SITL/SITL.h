@@ -254,6 +254,9 @@ public:
     AP_Float launch_velx;
     AP_Float launch_velz;
     AP_Float launch_time; // time in seconds to launch
+    AP_Int16 launch_posx_offset; // launch position offset in X
+    AP_Int16 launch_posy_offset; // launch position offset in Y
+    AP_Int16 launch_posz_offset; // launch position offset in Z
 
     // baro parameters
     class BaroParm {
