@@ -39,7 +39,7 @@ Plane::Plane(const char *frame_str) :
     }
 
     mass = 2.0f;
-    coefficient.c_drag_p = 0.05;
+    // coefficient.c_drag_p = 0.05;
     have_launcher = true;
 
     /*

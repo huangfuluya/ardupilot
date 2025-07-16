@@ -48,10 +48,10 @@ protected:
     const struct Coefficients {
         // from last_letter skywalker_2013/aerodynamics.yaml
         // thanks to Georacer!
-        float s = 0.45;
-        float b = 1.88;
-        float c = 0.24;
-        float c_lift_0 = 0.56;
+        float s = 0.45; //机翼面积
+        float b = 1.88; //机翼展长
+        float c = 0.24; //机翼平均弦长
+        float c_lift_0 = 0.56; //CL0
         float c_lift_deltae = 0;
         float c_lift_a = 6.9;
         float c_lift_q = 0;
@@ -60,7 +60,7 @@ protected:
         float alpha_stall = 0.4712;
         float c_drag_q = 0;
         float c_drag_deltae = 0.0;
-        float c_drag_p = 0.1;
+        float c_drag_p = 0.1;  //CD0
         float c_y_0 = 0;
         float c_y_b = -0.98;
         float c_y_p = 0;
