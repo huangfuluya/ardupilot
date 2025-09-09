@@ -205,7 +205,7 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
 
     static uint32_t time_stamp_ms = AP_HAL::millis();
     float freq = g2.butterfly_freq;  //最大扑动频率
-    static float w = 2 * M_PI * freq * in_thr;
+    float w = 2 * M_PI * freq * in_thr;
     float t = (AP_HAL::millis() - time_stamp_ms) / 1000;
     float A_left = g2.butterfly_A_base + in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
     float A_right = g2.butterfly_A_base - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
@@ -218,8 +218,8 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
 
     out_left = constrain_float(out_left, -1, 1);
     out_right = constrain_float(out_right, -1, 1);
-    SRV_Channels::set_output_scaled(wing_left, out_left * 4500);
-    SRV_Channels::set_output_scaled(wing_right, out_right * 4500);
+    SRV_Channels::set_output_norm(wing_left, out_left);
+    SRV_Channels::set_output_norm(wing_right, out_right);
 }
 
 /*
