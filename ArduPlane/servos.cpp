@@ -207,8 +207,8 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
     float freq = g2.butterfly_freq;  //最大扑动频率
     static float w = 2 * M_PI * freq * in_thr;
     float t = (AP_HAL::millis() - time_stamp_ms) / 1000;
-    float A_left = 0.5 + in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
-    float A_right = 0.5 - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
+    float A_left = g2.butterfly_A_base + in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
+    float A_right = g2.butterfly_A_base - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
     A_left = constrain_float(A_left, 0, 1);
     A_right = constrain_float(A_right, 0, 1);
     float D = in_ele * constrain_float(g2.butterfly_dE_factor, -0.5, 0.5) + g2.butterfly_D_base;
