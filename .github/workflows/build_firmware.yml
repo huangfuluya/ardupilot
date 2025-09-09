@@ -1,0 +1,35 @@
+name: Build firmware
+
+on: push # 当有新的 push 事件时触发
+
+jobs:
+    build:
+        runs-on: ubuntu-latest # 使用 ubuntu 系统
+
+        strategy:
+            matrix:
+                board:
+                    - MatekF405-TE
+
+        container:
+            image: ardupilot/ardupilot-dev-chibios:latest # 使用 ardupilot/ardupilot-dev-chibios:latest 镜像
+
+        steps:
+            # Check out your repository
+            - name: 检出代码
+                uses: actions/checkout@v4
+                with:
+                    submodules: recursive
+
+            # Build the firmware
+            - name: 编译固件
+                run: |
+                    ./waf configure --board ${{ matrix.board }}
+                    ./waf plane
+
+            # Upload the firmware as an artifact
+            - name: 保存固件
+                uses: actions/upload-artifact@v4
+                with:
+                    name: ${{ matrix.board }}-firmware
+                    path: ./build/${{ matrix.board }}/bin/
