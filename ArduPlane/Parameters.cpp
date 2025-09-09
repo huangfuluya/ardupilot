@@ -1302,7 +1302,12 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: systemid.cpp
     AP_SUBGROUPINFO(systemid, "SID", 38, ParametersG2, AP_SystemID),
 #endif
-    
+
+    AP_GROUPINFO("BF_FREQ", 39, ParametersG2, butterfly_freq, 20),
+    // 这个值最大不可超过0.5
+    AP_GROUPINFO("BF_DAFAC", 40, ParametersG2, butterfly_dA_factor, 0.3f),
+
+    AP_GROUPINFO("BF_DBAS", 41, ParametersG2, butterfly_D_base, 0.0f),
     AP_GROUPEND
 };
 

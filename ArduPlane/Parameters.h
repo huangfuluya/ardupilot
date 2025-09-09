@@ -580,6 +580,10 @@ public:
     
     AP_Int8         axis_bitmask; // axes to be autotuned
 
+    AP_Float butterfly_freq;
+    AP_Float butterfly_dA_factor;
+    AP_Float butterfly_dE_factor;
+    AP_Float butterfly_D_base;
     // just to make compilation easier when all things are compiled out...
     uint8_t unused_integer;
 

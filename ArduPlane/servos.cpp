@@ -191,6 +191,36 @@ void Plane::channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, S
     SRV_Channels::set_output_scaled(func2_out, out2);
 }
 
+void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t ail,        SRV_Channel::Aux_servo_function_t ele,
+                                            SRV_Channel::Aux_servo_function_t thr,        SRV_Channel::Aux_servo_function_t rud, 
+                                            SRV_Channel::Aux_servo_function_t wing_left,  SRV_Channel::Aux_servo_function_t wing_right) const
+{
+    //油门：扑动频率
+    //升降：扑动中值位置
+    //滚转：左右扑动幅度差异
+    float in_ail = SRV_Channels::get_output_scaled(ail) / 4500.0;
+    float in_ele = SRV_Channels::get_output_scaled(ele) / 4500.0;
+    float in_thr = SRV_Channels::get_output_scaled(thr) / 4500.0;
+    // float in_rud = SRV_Channels::get_output_scaled(rud) / 4500.0;
+
+    static uint32_t time_stamp_ms = AP_HAL::millis();
+    float freq = g2.butterfly_freq;  //最大扑动频率
+    static float w = 2 * M_PI * freq * in_thr;
+    float t = (AP_HAL::millis() - time_stamp_ms) / 1000;
+    float A_left = 0.5 + in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
+    float A_right = 0.5 - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
+    A_left = constrain_float(A_left, 0, 1);
+    A_right = constrain_float(A_right, 0, 1);
+    float D = in_ele * constrain_float(g2.butterfly_dE_factor, -0.5, 0.5) + g2.butterfly_D_base;
+
+    float out_left = D + A_left * sinf(w * t);
+    float out_right = D + A_right * sinf(w * t);
+
+    out_left = constrain_float(out_left, -1, 1);
+    out_right = constrain_float(out_right, -1, 1);
+    SRV_Channels::set_output_scaled(wing_left, out_left * 4500);
+    SRV_Channels::set_output_scaled(wing_right, out_right * 4500);
+}
 
 /*
   setup flaperon output channels
@@ -993,6 +1023,8 @@ void Plane::servos_output(void)
     // run vtail and elevon mixers
     channel_function_mixer(SRV_Channel::k_aileron, SRV_Channel::k_elevator, SRV_Channel::k_elevon_left, SRV_Channel::k_elevon_right);
     channel_function_mixer(SRV_Channel::k_rudder,  SRV_Channel::k_elevator, SRV_Channel::k_vtail_right, SRV_Channel::k_vtail_left);
+
+    channel_function_mixer_butterfly(SRV_Channel::k_aileron,SRV_Channel::k_elevator,SRV_Channel::k_throttle, SRV_Channel::k_rudder, SRV_Channel::k_wing_left, SRV_Channel::k_wing_right);
 
 #if HAL_QUADPLANE_ENABLED
     // cope with tailsitters and bicopters
