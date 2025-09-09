@@ -193,20 +193,20 @@ void Plane::channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, S
 
 void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t ail,        SRV_Channel::Aux_servo_function_t ele,
                                             SRV_Channel::Aux_servo_function_t thr,        SRV_Channel::Aux_servo_function_t rud, 
-                                            SRV_Channel::Aux_servo_function_t wing_left,  SRV_Channel::Aux_servo_function_t wing_right) const
+                                            SRV_Channel::Aux_servo_function_t wing_left,  SRV_Channel::Aux_servo_function_t wing_right)
 {
     //油门：扑动频率
     //升降：扑动中值位置
     //滚转：左右扑动幅度差异
-    float in_ail = SRV_Channels::get_output_scaled(ail) / 4500.0;
-    float in_ele = SRV_Channels::get_output_scaled(ele) / 4500.0;
-    float in_thr = SRV_Channels::get_output_scaled(thr) / 4500.0;
+    float in_ail = SRV_Channels::get_output_scaled(ail) / 4500.0f;
+    float in_ele = SRV_Channels::get_output_scaled(ele) / 4500.0f;
+    float in_thr = SRV_Channels::get_output_scaled(thr) / 100.0f;// 0~100
     // float in_rud = SRV_Channels::get_output_scaled(rud) / 4500.0;
 
     static uint32_t time_stamp_ms = AP_HAL::millis();
     float freq = g2.butterfly_freq;  //最大扑动频率
     float w = 2 * M_PI * freq * in_thr;
-    float t = (AP_HAL::millis() - time_stamp_ms) / 1000; //求时间步
+    float t = (AP_HAL::millis() - time_stamp_ms) / 1000.0f; //求时间步
     time_stamp_ms = AP_HAL::millis();
     static float phi = 0.0f;
     phi = phi + t * w;

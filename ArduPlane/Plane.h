@@ -1186,7 +1186,7 @@ private:
 
     void channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t ail,        SRV_Channel::Aux_servo_function_t ele,
                                           SRV_Channel::Aux_servo_function_t thr,        SRV_Channel::Aux_servo_function_t rud, 
-                                          SRV_Channel::Aux_servo_function_t wing_left,  SRV_Channel::Aux_servo_function_t wing_right) const;
+                                          SRV_Channel::Aux_servo_function_t wing_left,  SRV_Channel::Aux_servo_function_t wing_right);
                                           
     void flaperon_update();
     void indicate_waiting_for_rud_neutral_to_takeoff(void);
