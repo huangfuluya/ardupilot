@@ -210,7 +210,7 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
     time_stamp_ms = AP_HAL::millis();
     static float phi = 0.0f;
     phi = phi + t * w;
-    phi = wrap_2PI(phi);
+    phi = wrap_PI(phi);
     
     float A_left = g2.butterfly_A_base + in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
     float A_right = g2.butterfly_A_base - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
@@ -218,8 +218,19 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
     A_right = constrain_float(A_right, 0, 1);
     float D = in_ele * constrain_float(g2.butterfly_dE_factor, -0.5, 0.5) + g2.butterfly_D_base;
 
-    float out_left = D + A_left * sinf(phi);
-    float out_right = D + A_right * sinf(phi);
+    // 如果飞机上锁，则不再扑动，即phi要归到0处.
+    // 方法是设置一个归0系数，让它随着时间慢慢归0
+    static uint16_t scale = 0;
+    if (!arming.is_armed()) {//如果没有解锁的时候，此值减小
+        if (scale > 0)
+        {
+            scale--;
+        }
+    }else if (scale < 400) {//解锁后，慢慢增大到400
+        scale++;
+    }
+    float out_left = D + A_left * sinf(phi * (scale / 400.0f));
+    float out_right = D + A_right * sinf(phi * (scale / 400.0f));
 
     out_left = constrain_float(out_left, -1, 1);
     out_right = constrain_float(out_right, -1, 1);
