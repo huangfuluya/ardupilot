@@ -585,6 +585,9 @@ public:
     AP_Float butterfly_dE_factor;
     AP_Float butterfly_D_base;
     AP_Float butterfly_A_base;
+
+    AP_Float butterfly_deadzone;
+    AP_Float butterfly_retract_speed;
     // just to make compilation easier when all things are compiled out...
     uint8_t unused_integer;
 

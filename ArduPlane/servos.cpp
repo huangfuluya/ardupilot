@@ -202,7 +202,6 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
     float in_ele = SRV_Channels::get_output_scaled(ele) / 4500.0f;
     float in_thr = SRV_Channels::get_output_scaled(thr) / 100.0f;// 0~100
     // float in_rud = SRV_Channels::get_output_scaled(rud) / 4500.0;
-
     static uint32_t time_stamp_ms = AP_HAL::millis();
     float freq = g2.butterfly_freq;  //最大扑动频率
     float w = 2 * M_PI * freq * in_thr;
@@ -216,7 +215,7 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
     float A_right = g2.butterfly_A_base - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
     A_left = constrain_float(A_left, 0, 1);
     A_right = constrain_float(A_right, 0, 1);
-    float D = in_ele * constrain_float(g2.butterfly_dE_factor, -0.5, 0.5) + g2.butterfly_D_base;
+    float D = in_ele*constrain_float(g2.butterfly_dE_factor, -0.5, 0.5) + g2.butterfly_D_base;
 
     // 如果飞机上锁，则不再扑动，即phi要归到0处.
     // 方法是设置一个归0系数，让它随着时间慢慢归0
@@ -229,6 +228,15 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
     }else if (scale < 400) {//解锁后，慢慢增大到400
         scale++;
     }
+
+    if (in_thr<g2.butterfly_deadzone) //油门拉低时触发回中
+    {
+        const float step = g2.butterfly_retract_speed * M_PI;
+        phi = constrain_float(phi - copysignf(step, phi),
+                      fminf(phi, 0.0f),
+                      fmaxf(phi, 0.0f));
+    }
+
     float out_left = D + A_left * sinf(phi * (scale / 400.0f));
     float out_right = D + A_right * sinf(phi * (scale / 400.0f));
 

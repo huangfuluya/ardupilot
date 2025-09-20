@@ -1312,6 +1312,10 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     AP_GROUPINFO("BF_DBAS", 42, ParametersG2, butterfly_D_base, 0.0f),
 
     AP_GROUPINFO("BF_ABAS", 43, ParametersG2, butterfly_A_base, 0.5f),
+
+    AP_GROUPINFO("BF_DDZE", 44, ParametersG2, butterfly_deadzone,0.05f),
+
+    AP_GROUPINFO("BF_RTSP", 45, ParametersG2, butterfly_retract_speed,0.5f),
     AP_GROUPEND
 };
 
