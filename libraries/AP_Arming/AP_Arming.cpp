@@ -66,6 +66,7 @@
   #include <AP_Vehicle/AP_Vehicle_Type.h>
 
   #include <AP_PiccoloCAN/AP_PiccoloCAN.h>
+  #include <AP_ZYServo/AP_ZYServo.h>
   #include <AP_DroneCAN/AP_DroneCAN.h>
 #endif
 
@@ -1289,6 +1290,7 @@ bool AP_Arming::can_checks(bool report)
                 case AP_CAN::Protocol::Scripting:
                 case AP_CAN::Protocol::Scripting2:
                 case AP_CAN::Protocol::KDECAN:
+                case AP_CAN::Protocol::ZYServo:
 
                     break;
             }

@@ -20,6 +20,7 @@
 
 #include <AP_DroneCAN/AP_DroneCAN.h>
 #include <AP_PiccoloCAN/AP_PiccoloCAN.h>
+#include <AP_ZYServo/AP_ZYServo.h>
 
 // table of user settable CAN bus parameters
 const AP_Param::GroupInfo AP_CANManager::CANDriver_Params::var_info[] = {
@@ -58,6 +59,11 @@ const AP_Param::GroupInfo AP_CANManager::CANDriver_Params::var_info[] = {
     // @RebootRequired: True
     AP_GROUPINFO("PROTOCOL2", 6, AP_CANManager::CANDriver_Params, _driver_type_11bit, float(AP_CAN::Protocol::None)),
     
+    // ZYServo
+#if HAL_ZYSERVO_ENABLED
+    // @Group: ZY_Servo
+    AP_SUBGROUPPTR(_zyservo, "ZY_", 7, AP_CANManager::CANDriver_Params, AP_ZYServo),
+#endif
     AP_GROUPEND
 };
 #endif
