@@ -321,8 +321,8 @@ bool AP_ZYServo::is_servo_channel_active(uint8_t chan) {
 uint16_t AP_ZYServo::convert_pwm_to_angle_cd(uint16_t pwm) {
     // 将1000~2000的pwm范围转换为舵机的0~120度角度值
     pwm = constrain_uint16(pwm, 1000, 2000);
-    float angle = (pwm - 1000) * 12.0f;// * 120.0f / 1000.0f; // 线性映射到0~120 00  厘度
-    return static_cast<uint16_t>(round(angle)); // 转换为厘度
+    uint16_t angle = (pwm - 1000) * 12;// * 120.0f / 1000.0f; // 线性映射到0~120 00  厘度
+    return angle; 
 }
 // write frame on CAN bus
 bool AP_ZYServo::write_frame(AP_HAL::CANFrame &out_frame, uint64_t timeout_us)
