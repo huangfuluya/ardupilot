@@ -148,9 +148,10 @@ void AP_MotorsHeli_Swash::calculate_roll_pitch_collective_factors()
             // three-servo roll/pitch mixer for H3-120
             // HR3-120 uses reversed servo and collective direction in heli setup
             // not a pure mixing swashplate, phase angle is adjustable
-            add_servo_angle(CH_1, -60.0, 1.0);
-            add_servo_angle(CH_2,  60.0, 1.0);
-            add_servo_angle(CH_3, 180.0, 1.0);
+            add_servo_angle(CH_1, -60.0, 0.0);
+            add_servo_angle(CH_2,  60.0, 0.0);
+            add_servo_angle(CH_3, 180.0, 0.0);
+            // add_servo_raw(CH_3,  0.0, 0.0, 1.0);
             break;
 
         case SWASHPLATE_TYPE_H4_90:
@@ -230,7 +231,7 @@ void AP_MotorsHeli_Swash::calculate(float roll, float pitch, float collective)
         }
 
         _output[i] = (_rollFactor[i] * roll) + (_pitchFactor[i] * pitch) + _collectiveFactor[i] * collective;
-        if (_swash_type == SWASHPLATE_TYPE_H1 && (i == CH_1 || i == CH_2)) {
+        if ((_swash_type == SWASHPLATE_TYPE_H1 || _swash_type == SWASHPLATE_TYPE_H3_120) && (i == CH_1 || i == CH_2)) {
             _output[i] += 0.5f;
         }
 
@@ -240,10 +241,16 @@ void AP_MotorsHeli_Swash::calculate(float roll, float pitch, float collective)
         if (_make_servo_linear) {
             _output[i] = get_linear_servo_output(_output[i]);
         }
+        _output[i] = rescale_cyclic_output(_output[i]);
 
     }
 }
-
+float AP_MotorsHeli_Swash::rescale_cyclic_output(float input) const
+{
+    // ensure input is in range -1 to +1
+    input = constrain_float(input, -1.0f, 1.0f);
+    return input * cyclic_scale_factor;
+}
 // set_linear_servo_out - sets swashplate servo output to be linear
 float AP_MotorsHeli_Swash::get_linear_servo_output(float input) const
 {

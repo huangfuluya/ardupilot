@@ -183,6 +183,9 @@ const AP_Param::GroupInfo AP_MotorsHeli_Single::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("YAW_TRIM", 23,  AP_MotorsHeli_Single, _yaw_trim, 0.0f),
 
+    // cyclic output scaling factor to reduce swashplate tilt at high collective
+    AP_GROUPINFO("CYC_SC", 24,  AP_MotorsHeli_Single, _cyclic_scale, 0.5f),
+
     AP_GROUPEND
 };
 
@@ -496,12 +499,14 @@ void AP_MotorsHeli_Single::output_to_motors()
                 case AP_Motors::SpoolState::SPOOLING_DOWN:
                     // Set DDFP to servo min
                     output_to_ddfp_tail(0.0);
+                    _swashplate.set_cyclic_scale_factor(1.0f);
                     break;
 
                 case AP_Motors::SpoolState::SPOOLING_UP:
                 case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
                     // Operate DDFP to between DDFP_SPIN_MIN and DDFP_SPIN_MAX using thrust linearisation
                     output_to_ddfp_tail(thr_lin.thrust_to_actuator(_servo4_out));
+                    _swashplate.set_cyclic_scale_factor(constrain_float((_cyclic_scale - 1.0f) * _main_rotor.get_control_output() + 1.0f, 0.4f, 1.0f));
                     break;
             }
             break;

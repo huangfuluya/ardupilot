@@ -147,6 +147,6 @@ protected:
     AP_Int16        _direct_drive_tailspeed;    // Direct Drive VarPitch Tail ESC speed (0 ~ 1000)
     AP_Float        _collective_yaw_scale;      // Feed-forward compensation to automatically add rudder input when collective pitch is increased. Can be positive or negative depending on mechanics.
     AP_Float        _yaw_trim;                  // Fixed offset applied to yaw output to reduce yaw I.
-
+    AP_Float        _cyclic_scale;              // Cyclic output scaling factor to reduce swashplate tilt at high collective
     bool            _acro_tail = false;
 };

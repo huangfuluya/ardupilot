@@ -116,8 +116,8 @@ void Helicopter::update(const struct sitl_input &input)
         push_to_buffer(input.servos);
     }
 
-    float swash1 = (_servos_delayed[0]-1000) / 1000.0f;
-    float swash2 = (_servos_delayed[1]-1000) / 1000.0f;
+    float swash1 = (_servos_delayed[0]-1500) / 1000.0f;
+    float swash2 = (_servos_delayed[1]-1500) / 1000.0f;
     float swash3 = (_servos_delayed[2]-1000) / 1000.0f;
 
     Vector3f rot_accel;
@@ -137,20 +137,20 @@ void Helicopter::update(const struct sitl_input &input)
         float tail_rotor = (_servos_delayed[3]-1000) / 1000.0f;
 
         // thrust calculated based on 5 deg hover collective for 10lb aircraft at 1500RPM
-        float coll = 50.0f * (swash1+swash2+swash3) / 3.0f - 25.0f;
+        float coll = 20.0f;
         thrust = (rpm[0] / nominal_rpm) * thrust_scale * sq(nominal_rpm * 0.104667f) * coll;
 
         // determine RPM
         rpm[0] = update_rpm(rpm[0], rsc, eng_torque, coll, dt);
 
         // Calculate rotor tip path plane angle
-        float roll_cyclic = 1.283 * (swash1 - swash2) / cyclic_scalar;
-        float pitch_cyclic = 1.48 * ((swash1+swash2) / 2.0f - swash3) / cyclic_scalar;
+        float roll_cyclic = 1.283 * ((swash1 - swash2) / 2.0f) / cyclic_scalar;
+        float pitch_cyclic = 1.48 * ((swash1 + swash2) / 2.0f) / cyclic_scalar;
         Vector2f ctrl_pos = Vector2f(roll_cyclic, pitch_cyclic);
         update_rotor_dynamics(gyro, ctrl_pos, _tpp_angle, dt);
 
-        float yaw_cmd = 2.0f * tail_rotor - 1.0f; // convert range to -1 to 1
-        float tail_rotor_torque = (21.6f * 2.96f * yaw_cmd - 2.96f * gyro.z) * sq(rpm[0]/nominal_rpm);
+        float yaw_cmd = tail_rotor; // convert range to 0 to 1
+        float tail_rotor_torque = (21.6f * 2.96f * yaw_cmd - 2.96f * gyro.z) * 1.0f;
         float tail_rotor_thrust =  -1.0f * tail_rotor_torque * izz / tr_dist;  //right pedal produces left body accel
 
         // rotational acceleration, in rad/s/s, in body frame

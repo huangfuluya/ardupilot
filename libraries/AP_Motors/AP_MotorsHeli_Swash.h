@@ -33,7 +33,8 @@ public:
 
     // Output calculated values to servos
     void output();
-
+    float rescale_cyclic_output(float input) const;
+    void set_cyclic_scale_factor(float scale) { cyclic_scale_factor = scale; }
     // get_phase_angle - returns the rotor phase angle
     int16_t get_phase_angle() const { return _phase_angle; }
 
@@ -50,6 +51,7 @@ public:
 
 private:
 
+    float cyclic_scale_factor = 1.0f;
     // linearize mechanical output of swashplate servo
     float get_linear_servo_output(float input) const;
 
