@@ -319,7 +319,7 @@ void Helicopter::update(const struct sitl_input &input)
     }
     }
 
-
+    add_shove_forces(rot_accel, accel_body);
     update_dynamics(rot_accel);
     update_external_payload(input);
 
