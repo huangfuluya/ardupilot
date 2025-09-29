@@ -5,10 +5,10 @@
 // throw_init - initialise throw controller
 bool ModeThrow::init(bool ignore_checks)
 {
-#if FRAME_CONFIG == HELI_FRAME
-    // do not allow helis to use throw to start
-    return false;
-#endif
+// #if FRAME_CONFIG == HELI_FRAME
+//     // do not allow helis to use throw to start
+//     return false;
+// #endif
 
     // do not enter the mode when already armed or when flying
     if (motors->armed()) {
