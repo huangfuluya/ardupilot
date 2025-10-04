@@ -363,8 +363,8 @@ Vector3f Plane::getForce(float inputAileron, float inputElevator, float inputRud
     float rho = air_density;
 
 	//request lift and drag alpha-coefficients from the corresponding functions
-	double c_lift_a = liftCoeff(alpha);
-	double c_drag_a = dragCoeff(alpha);
+	double c_lift_a = liftCoeff(alpha) * sitl->_lsc;
+	double c_drag_a = dragCoeff(alpha) * sitl->_dsc;
 
 	//convert coefficients to the body frame
 	double c_x_a = -c_drag_a*cos(alpha)+c_lift_a*sin(alpha);

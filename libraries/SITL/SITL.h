@@ -173,6 +173,7 @@ public:
 #endif
     static const struct AP_Param::GroupInfo var_mag[];
     static const struct AP_Param::GroupInfo var_ins[];
+    static const struct AP_Param::GroupInfo var_throw[];
 #ifdef SFML_JOYSTICK
     static const struct AP_Param::GroupInfo var_sfml_joystick[];
 #endif //SFML_JOYSTICK
@@ -257,6 +258,9 @@ public:
     AP_Int16 launch_posx_offset; // launch position offset in X
     AP_Int16 launch_posy_offset; // launch position offset in Y
     AP_Int16 launch_posz_offset; // launch position offset in Z
+
+    AP_Float _lsc;
+    AP_Float _dsc;
 
     // baro parameters
     class BaroParm {

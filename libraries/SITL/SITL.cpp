@@ -647,13 +647,7 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
     // @Path: ./SIM_Vicon.cpp
     AP_SUBGROUPINFO(vicon, "VICON_", 56, SIM, ViconParms),
 
-    AP_GROUPINFO("LUCH_YAW",    57, SIM, launch_yaw, 0.0f),
-    AP_GROUPINFO("LUCH_VEL",    58, SIM, launch_vel, 10.0f),
-    AP_GROUPINFO("LUCH_T",    59, SIM, launch_time, 4.0f),
-
-    AP_GROUPINFO("LUCH_PX",    60, SIM, launch_posx_offset, 25),
-    AP_GROUPINFO("LUCH_PY",    61, SIM, launch_posy_offset, 10),
-    AP_GROUPINFO("LUCH_PZ",    62, SIM, launch_posz_offset, 400),
+    AP_SUBGROUPEXTENSION("",      57, SIM,  var_throw),
 #ifdef SFML_JOYSTICK
     AP_SUBGROUPEXTENSION("",      63, SIM,  var_sfml_joystick),
 #endif // SFML_JOYSTICK
@@ -887,7 +881,20 @@ const AP_Param::GroupInfo SIM::var_mag[] = {
 
     AP_GROUPEND
 };
+// var_throw
+const AP_Param::GroupInfo SIM::var_throw[] = {
+    AP_GROUPINFO("LUCH_YAW",    1, SIM, launch_yaw, 0.0f),
+    AP_GROUPINFO("LUCH_VEL",    2, SIM, launch_vel, 10.0f),
+    AP_GROUPINFO("LUCH_T",    3, SIM, launch_time, 4.0f),
 
+    AP_GROUPINFO("LUCH_PX",    4, SIM, launch_posx_offset, 25),
+    AP_GROUPINFO("LUCH_PY",    5, SIM, launch_posy_offset, 10),
+    AP_GROUPINFO("LUCH_PZ",    6, SIM, launch_posz_offset, 400),
+    // _lsc and _dsc
+    AP_GROUPINFO("LSC",         7, SIM,_lsc,1.0f),
+    AP_GROUPINFO("DSC",         8, SIM,_dsc,1.0f),
+    AP_GROUPEND
+};
 #ifdef SFML_JOYSTICK
 const AP_Param::GroupInfo SIM::var_sfml_joystick[] = {
     AP_GROUPINFO("SF_JS_STICK",    1, SIM,  sfml_joystick_id,   0),
