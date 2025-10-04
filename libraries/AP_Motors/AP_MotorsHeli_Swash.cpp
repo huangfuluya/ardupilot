@@ -45,12 +45,16 @@ const AP_Param::GroupInfo AP_MotorsHeli_Swash::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("LIN_SVO", 3, AP_MotorsHeli_Swash, _linear_swash_servo, 0),
 
+    AP_GROUPINFO("H3_LAT_SC", 4, AP_MotorsHeli_Swash, _lat_sc, 0.8660), // cos(30)
+
+    AP_GROUPINFO("H3_LON_SC", 5, AP_MotorsHeli_Swash, _lon_sc, 0.8), // sin(30)
+
     // @Param: H3_ENABLE
     // @DisplayName: Enable Generic H3 Swashplate Settings
     // @Description: Automatically set when H3 generic swash type is selected. Do not set manually.
     // @Values: 0:Disabled,1:Enabled
     // @User: Advanced
-    AP_GROUPINFO_FLAGS("H3_ENABLE", 4, AP_MotorsHeli_Swash, enable, 0, AP_PARAM_FLAG_ENABLE),
+    AP_GROUPINFO_FLAGS("H3_ENABLE", 6, AP_MotorsHeli_Swash, enable, 0, AP_PARAM_FLAG_ENABLE),
 
     // @Param: H3_SV1_POS
     // @DisplayName: Swashplate Servo 1 Position
@@ -58,7 +62,7 @@ const AP_Param::GroupInfo AP_MotorsHeli_Swash::var_info[] = {
     // @Range: -180 180
     // @Units: deg
     // @User: Advanced
-    AP_GROUPINFO("H3_SV1_POS", 5, AP_MotorsHeli_Swash, _servo1_pos, -60),
+    AP_GROUPINFO("H3_SV1_POS", 7, AP_MotorsHeli_Swash, _servo1_pos, -60),
 
     // @Param: H3_SV2_POS
     // @DisplayName: Swashplate Servo 2 Position
@@ -66,7 +70,7 @@ const AP_Param::GroupInfo AP_MotorsHeli_Swash::var_info[] = {
     // @Range: -180 180
     // @Units: deg
     // @User: Advanced
-    AP_GROUPINFO("H3_SV2_POS", 6, AP_MotorsHeli_Swash, _servo2_pos, 60),
+    AP_GROUPINFO("H3_SV2_POS", 8, AP_MotorsHeli_Swash, _servo2_pos, 60),
 
     // @Param: H3_SV3_POS
     // @DisplayName: Swashplate Servo 3 Position
@@ -74,7 +78,7 @@ const AP_Param::GroupInfo AP_MotorsHeli_Swash::var_info[] = {
     // @Range: -180 180
     // @Units: deg
     // @User: Advanced
-    AP_GROUPINFO("H3_SV3_POS", 7, AP_MotorsHeli_Swash, _servo3_pos, 180),
+    AP_GROUPINFO("H3_SV3_POS", 9, AP_MotorsHeli_Swash, _servo3_pos, 180),
     
     // @Param: H3_PHANG
     // @DisplayName: Swashplate Phase Angle Compensation
@@ -83,7 +87,8 @@ const AP_Param::GroupInfo AP_MotorsHeli_Swash::var_info[] = {
     // @Units: deg
     // @User: Advanced
     // @Increment: 1
-    AP_GROUPINFO("H3_PHANG", 8, AP_MotorsHeli_Swash, _phase_angle, 0),
+    AP_GROUPINFO("H3_PHANG", 10, AP_MotorsHeli_Swash, _phase_angle, 0),
+
    
     AP_GROUPEND
 };
@@ -148,8 +153,10 @@ void AP_MotorsHeli_Swash::calculate_roll_pitch_collective_factors()
             // three-servo roll/pitch mixer for H3-120
             // HR3-120 uses reversed servo and collective direction in heli setup
             // not a pure mixing swashplate, phase angle is adjustable
-            add_servo_angle(CH_1, -60.0, 0.0);
-            add_servo_angle(CH_2,  60.0, 0.0);
+            // add_servo_angle(CH_1, -60.0, 0.0);
+            add_servo_raw(CH_1,  _lat_sc,_lon_sc,0);
+            // add_servo_angle(CH_2,  60.0, 0.0);
+            add_servo_raw(CH_2, -_lat_sc,_lon_sc,0);
             add_servo_angle(CH_3, 180.0, 0.0);
             // add_servo_raw(CH_3,  0.0, 0.0, 1.0);
             break;

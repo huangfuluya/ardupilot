@@ -101,6 +101,7 @@ private:
     AP_Int16 _servo3_pos;                        // servo3 azimuth position on swashplate with front of heli being 0 deg
     AP_Int16 _phase_angle;                       // Phase angle correction for rotor head.  If pitching the swash forward induces 
                                                  // a roll, this can be negative depending on mechanics.
-
+    AP_Float _lat_sc;
+    AP_Float _lon_sc;
 };
 
