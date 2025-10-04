@@ -63,6 +63,8 @@ private:
 
     bool _initialized = false;
     AP_Int32 _chan_mask; // bitmask of channels to output on ZY bus
+    AP_Int32 _servo_id_start;
+    AP_Int32 _gcs_id_start;
     char _thread_name[16];
 
     uint8_t _driver_index;

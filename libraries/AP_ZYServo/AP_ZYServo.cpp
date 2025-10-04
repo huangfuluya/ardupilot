@@ -62,6 +62,9 @@ const AP_Param::GroupInfo AP_ZYServo::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("CHAN", 1, AP_ZYServo, _chan_mask, 0xFFFF),
 
+    AP_GROUPINFO("SID0", 2, AP_ZYServo, _servo_id_start, AP_ZYSERVO_SERVO_ID_MIN),
+
+    AP_GROUPINFO("GID0", 3, AP_ZYServo, _gcs_id_start, AP_ZYSERVO_GCS_ID_MAX),
     AP_GROUPEND
 };
 
@@ -149,8 +152,8 @@ void AP_ZYServo::loop(void)
                 uint16_t raw_pwm;
                 SRV_Channels::get_output_pwm_chan(chan-1, raw_pwm);
                 // 构建CAN帧
-                uint16_t servo_id = AP_ZYSERVO_SERVO_ID_MIN + uint16_t(chan-1); // 假设ID从0x10开始
-                uint16_t gcs_id = AP_ZYSERVO_GCS_ID_MAX - uint16_t(chan-1); // 假设GCS ID从0x3F开始递减
+                uint16_t servo_id = _servo_id_start + uint16_t(chan-1); // 假设ID从0x10开始
+                uint16_t gcs_id = _gcs_id_start - uint16_t(chan-1); // 假设GCS ID从0x3F开始递减
                 // 扩展帧，先传低字节再传高字节
                 txFrame.id = (uint32_t(0x1400 | gcs_id)<<16) | 0x4405 | AP_HAL::CANFrame::FlagEFF;
 
@@ -207,7 +210,7 @@ void AP_ZYServo::unpacket_and_log(const AP_HAL::CANFrame &in_frame,uint16_t expe
         debug_can(AP_CANManager::LOG_ERROR, "ZYServo: Unexpected servo ID\n\r");
         return;
     }
-    uint8_t chan = servo_id - AP_ZYSERVO_SERVO_ID_MIN + 1; // 计算通道号
+    uint8_t chan = servo_id - _servo_id_start + 1; // 计算通道号
     if (chan < 1 || chan > AP_ZYSERVO_MAX_NUM_SERVO) {
         // 通道号无效，忽略
         debug_can(AP_CANManager::LOG_ERROR, "ZYServo: Invalid channel number\n\r");
