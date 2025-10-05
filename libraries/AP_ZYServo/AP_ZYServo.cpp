@@ -245,69 +245,29 @@ void AP_ZYServo::unpacket_and_log(const AP_HAL::CANFrame &in_frame,uint16_t expe
         uint16_t voltage_cv = in_frame.data[0] | (in_frame.data[1] << 8);
         _telem[chan - 1].stage = 2;
         _telem[chan - 1].voltage_cv = voltage_cv;
-        // if (chan >= last_chan) {
-        //     last_chan = chan;
-        // }
     }
 
 #if HAL_LOGGING_ENABLED
     static uint64_t last_log_time_us = AP_HAL::micros64();
     uint64_t delta_log_ms = (AP_HAL::micros64() - last_log_time_us) / 1000;
-    // // 隔1s向地面站发送一次
-    // static uint64_t last_gcs_time_us = AP_HAL::micros64();
-    // if (AP_HAL::micros64() - last_gcs_time_us > 1000000) {
-    //     last_gcs_time_us = AP_HAL::micros64();
-    //     gcs().send_text(MAV_SEVERITY::MAV_SEVERITY_INFO,
-    //         "ZYServo CH%u Dangle:%.2f Angle:%.2f Cur:%.2fV:%.2f Sta:0x%04X",
-    //         chan,
-    //         _telem[chan - 1].desired_angle,
-    //         _telem[chan - 1].current_angle,
-    //         _telem[chan - 1].current,
-    //         _telem[chan - 1].voltage,
-    //         _telem[chan - 1].status
-    //     );
-    // }
-    // 记录不要超过50Hz
-    // if (telem[chan - 1].stage == 2 && last_chan >= chan && delta_log_ms > 20) {
-    if ((_telem[chan - 1].stage == 2) && (delta_log_ms > 20)){
-        last_log_time_us = AP_HAL::micros64();
-
-        for (uint8_t i=0; i<ARRAY_SIZE(_telem); i++) {
-            if(_telem[i].voltage_cv == 0){
-                // 没有收到过电压数据，说明没有收到完整数据，跳过
-                continue;
-            }
-            // @LoggerMessage: ZY05
-            // @Description: ZY05 servo data
-            // @Field: TimeUS: Time since system startup
-            // @Field: chan: Instance channel
-            // @Field: Dang: desired angle
-            // @Field: ang: reported angle
-            // @Field: cur: reported current
-            // @Field: vol: reported voltage
-            // @Field: sta: reported status
-            // @Units: s,deg,deg,A,V,bitmask
-            // @ scale
-            // @ data type
-
-            // char log_name[6];
-            // snprintf(log_name, sizeof(log_name), "ZY%u", chan);
+    if( _telem[chan - 1].stage == 2){
             AP::logger().WriteStreaming("ZY05",
-                "TimeUS,chan,Dang,Cang,cur,vol,sta,delta",
-                "s#ddAv-s",
-                "F000000F",
-                "QBffffHQ",
-                AP_HAL::micros64(),
-                chan, // convert to 1 indexed to match actuator IDs and SERVOx numbering
-                _telem[i].desired_angle,
-                _telem[i].current_angle,
-                _telem[i].current,
-                _telem[i].voltage_cv / 100.0f, // convert to volts
-                _telem[i].status,
-                delta_log_ms*1000
-            );
-            _telem[i].stage = 0; // reset stage after logging
-        }
+            "TimeUS,chan,Dang,Cang,cur,vol,sta,delta",
+            "s#ddAv-s",
+            "F000000F",
+            "QBffffHQ",
+            AP_HAL::micros64(),
+            chan, // convert to 1 indexed to match actuator IDs and SERVOx numbering
+            _telem[chan-1].desired_angle,
+            _telem[chan-1].current_angle,
+            _telem[chan-1].current,
+            _telem[chan-1].voltage_cv / 100.0f, // convert to volts
+            _telem[chan-1].status,
+            delta_log_ms*1000
+        );
+        _telem[chan-1].stage = 0; // reset stage after logging
+
+        last_log_time_us = AP_HAL::micros64();
     }
 #endif // HAL_LOGGING_ENABLED
     }
