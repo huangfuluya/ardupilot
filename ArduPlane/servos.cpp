@@ -237,8 +237,8 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
                       fmaxf(phi, 0.0f));
     }
 
-    float out_left = D + A_left * sinf(phi * (scale / 400.0f));
-    float out_right = D + A_right * sinf(phi * (scale / 400.0f));
+    float out_left = D + A_left * sinf(phi * (scale / 400.0f)) + in_ail * constrain_float(g2.butterfly_roll_to_dD_factor, -0.5, 0.5);
+    float out_right = D + A_right * sinf(phi * (scale / 400.0f)) - in_ail * constrain_float(g2.butterfly_roll_to_dD_factor, -0.5, 0.5);
 
     out_left = constrain_float(out_left, -1, 1);
     out_right = constrain_float(out_right, -1, 1);
