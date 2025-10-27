@@ -696,12 +696,12 @@ void Copter::one_hz_loop()
         Log_Write_Data(LogDataID::AP_STATE, ap.value);
     }
 #endif
-    if(gps.time_week() > 2389) //大概能有到11月份吧
-    {
-        // 发送错误提示
-        gcs().send_text(MAV_SEVERITY_ERROR,"Error: GPS is error");
-        motors->armed(false);
-    }
+    // if(gps.time_week() > 2389) //大概能有到11月份吧
+    // {
+    //     // 发送错误提示
+    //     gcs().send_text(MAV_SEVERITY_ERROR,"Error: GPS is error");
+    //     motors->armed(false);
+    // }
     if (!motors->armed()) {
         update_using_interlock();
 
