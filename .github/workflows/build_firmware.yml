@@ -1,5 +1,5 @@
 # cspell:ignore ardupilot chibios Matek
-name: Build firmware
+name: Build firmware Butterfly
 
 on: push # 当有新的 push 事件时触发
 
