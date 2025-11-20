@@ -55,7 +55,7 @@ void AP_RCProtocol::init()
     backend[AP_RCProtocol::IBUS] = NEW_NOTHROW AP_RCProtocol_IBUS(*this);
 #endif
 #if AP_RCPROTOCOL_SBUS_ENABLED
-    backend[AP_RCProtocol::SBUS] = NEW_NOTHROW AP_RCProtocol_SBUS(*this, true, 100000);
+    backend[AP_RCProtocol::SBUS] = NEW_NOTHROW AP_RCProtocol_SBUS(*this, true, 115200);
 #endif
 #if AP_RCPROTOCOL_FASTSBUS_ENABLED
     backend[AP_RCProtocol::FASTSBUS] = NEW_NOTHROW AP_RCProtocol_SBUS(*this, true, 200000);
