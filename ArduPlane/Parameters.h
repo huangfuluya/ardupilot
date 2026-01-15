@@ -581,14 +581,18 @@ public:
     AP_Int8         axis_bitmask; // axes to be autotuned
 
     AP_Float butterfly_freq;
-    AP_Float butterfly_dA_factor;
-    AP_Float butterfly_dE_factor;
+    AP_Float butterfly_min_freq; //最小的扑动频率
+    AP_Float butterfly_dA_factor;//滚转杆引起的幅度变化
+    AP_Float butterfly_dE_factor;//俯仰杆引起的中位同动变化
+    // AP_Float butterfly_dD_factor;//滚转杆引起的中位差动变化
     AP_Float butterfly_D_base;
+    AP_Float butterfly_D0_stop;
     AP_Float butterfly_A_base;
     AP_Float butterfly_roll_to_dD_factor;
 
     AP_Float butterfly_deadzone;
     AP_Float butterfly_retract_speed;
+    AP_Int8 butterfly_stop_mode; //-1是下扑时停，+1是上扑时停，0是both
     // just to make compilation easier when all things are compiled out...
     uint8_t unused_integer;
 

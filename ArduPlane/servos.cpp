@@ -197,53 +197,93 @@ void Plane::channel_function_mixer_butterfly(SRV_Channel::Aux_servo_function_t a
 {
     //油门：扑动频率
     //升降：扑动中值位置
-    //滚转：左右扑动幅度差异
+    //滚转：左右扑动幅度差异,左右扑动中位
     float in_ail = SRV_Channels::get_output_scaled(ail) / 4500.0f;
     float in_ele = SRV_Channels::get_output_scaled(ele) / 4500.0f;
     float in_thr = SRV_Channels::get_output_scaled(thr) / 100.0f;// 0~100
     // float in_rud = SRV_Channels::get_output_scaled(rud) / 4500.0;
     static uint32_t time_stamp_ms = AP_HAL::millis();
     float freq = g2.butterfly_freq;  //最大扑动频率
-    float w = 2 * M_PI * freq * in_thr;
+    float w = 2 * M_PI * freq;
+    float w_min = 2 * M_PI * g2.butterfly_min_freq;
+    w = in_thr * (w - w_min) + w_min; //根据油门调节扑动频率
     float t = (AP_HAL::millis() - time_stamp_ms) / 1000.0f; //求时间步
     time_stamp_ms = AP_HAL::millis();
     static float phi = 0.0f;
     phi = phi + t * w;
     phi = wrap_PI(phi);
     
-    float A_left = g2.butterfly_A_base + in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
-    float A_right = g2.butterfly_A_base - in_ail * constrain_float(g2.butterfly_dA_factor, 0, 0.5);
-    A_left = constrain_float(A_left, 0, 1);
-    A_right = constrain_float(A_right, 0, 1);
-    float D = in_ele*constrain_float(g2.butterfly_dE_factor, -0.5, 0.5) + g2.butterfly_D_base;
+    float A_left = g2.butterfly_A_base + in_ail * g2.butterfly_dA_factor;
+    float A_right = g2.butterfly_A_base - in_ail * g2.butterfly_dA_factor;
+    // A_left = constrain_float(A_left, 0, 1);
+    // A_right = constrain_float(A_right, 0, 1);
+    float D_left = in_ele*g2.butterfly_dE_factor + in_ail * g2.butterfly_roll_to_dD_factor + g2.butterfly_D_base;
+    float D_right = in_ele*g2.butterfly_dE_factor - in_ail * g2.butterfly_roll_to_dD_factor + g2.butterfly_D_base;
 
     // 如果飞机上锁，则不再扑动，即phi要归到0处.
     // 方法是设置一个归0系数，让它随着时间慢慢归0
-    static uint16_t scale = 0;
+    static uint16_t scale_uint = 0;
     if (!arming.is_armed()) {//如果没有解锁的时候，此值减小
-        if (scale > 0)
+        if (scale_uint > 0)
         {
-            scale--;
+            scale_uint--;
         }
-    }else if (scale < 400) {//解锁后，慢慢增大到400
-        scale++;
+    }else if (scale_uint < 400) {//解锁后，慢慢增大到400
+        scale_uint++;
     }
+    float scale = scale_uint/400.0f;
 
     if (in_thr<g2.butterfly_deadzone) //油门拉低时触发回中
     {
-        const float step = g2.butterfly_retract_speed * M_PI;
-        phi = constrain_float(phi - copysignf(step, phi),
-                      fminf(phi, 0.0f),
-                      fmaxf(phi, 0.0f));
+        // 判断phi与d_base之间的距离，如果距离小于一个时间步，则进一步判断上升还是下降
+        float des_phi = asinF(g2.butterfly_D0_stop);
+        float des_phi2 = wrap_PI(M_PI - des_phi);
+        bool downward_flag = false;
+        bool upward_flag = false;
+        if(abs(phi-des_phi)<w*t)
+            {upward_flag = true;}
+        if(abs(phi-des_phi2)<w*t)
+            {downward_flag = true;}
+        switch (g2.butterfly_stop_mode)
+        {
+            case -1:
+                //下扑时停上扑不停
+                upward_flag = false;
+                break;
+            case 1:
+                //上扑时停下扑不停
+                downward_flag = false;
+                break;
+            case 0:
+                //都停
+                break;
+            default:
+                break;
+        }
+        if (upward_flag || downward_flag)
+        {
+            phi = phi - t * w;
+            phi = wrap_PI(phi);
+        }
     }
 
-    float out_left = D + A_left * sinf(phi * (scale / 400.0f)) + in_ail * constrain_float(g2.butterfly_roll_to_dD_factor, -0.5, 0.5);
-    float out_right = D + A_right * sinf(phi * (scale / 400.0f)) - in_ail * constrain_float(g2.butterfly_roll_to_dD_factor, -0.5, 0.5);
+    float out_left = D_left + A_left * sinf(phi * scale);
+    float out_right = D_right + A_right * sinf(phi * scale);
 
-    out_left = constrain_float(out_left, -1, 1);
-    out_right = constrain_float(out_right, -1, 1);
-    SRV_Channels::set_output_norm(wing_left, out_left);
-    SRV_Channels::set_output_norm(wing_right, out_right);
+    // 获取对应通道所设置的中位值，然后在些基础上进行偏移
+    SRV_Channel* left_wing_chan = SRV_Channels::get_channel_for(SRV_Channel::Aux_servo_function_t::k_wing_left);
+    SRV_Channel* right_wing_chan = SRV_Channels::get_channel_for(SRV_Channel::Aux_servo_function_t::k_wing_right);
+    uint16_t left_trim_pwm = left_wing_chan->get_trim();
+    uint16_t right_trim_pwm = right_wing_chan->get_trim();
+    int8_t reverse_left = left_wing_chan->get_reversed() ? -1 : 1;
+    int8_t reverse_right = right_wing_chan->get_reversed() ? -1 : 1;
+    int16_t out_pwm_left = left_trim_pwm + int16_t(out_left * reverse_left * 500);
+    int16_t out_pwm_right = right_trim_pwm + int16_t(out_right * reverse_right * 500);
+    // pwm输出不能小于0了
+    out_pwm_left = MAX(out_pwm_left, 0);
+    out_pwm_right = MAX(out_pwm_right, 0);
+    left_wing_chan->set_output_pwm(uint16_t(out_pwm_left),true);
+    right_wing_chan->set_output_pwm(uint16_t(out_pwm_right),true);
 }
 
 /*

@@ -1318,6 +1318,11 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     AP_GROUPINFO("BF_RTSP", 45, ParametersG2, butterfly_retract_speed,0.5f),
 
     AP_GROUPINFO("BF_ROLD", 46, ParametersG2, butterfly_roll_to_dD_factor, 0.0f),
+    AP_GROUPINFO("BF_STOP", 47, ParametersG2, butterfly_stop_mode, 0),
+    AP_GROUPINFO("BF_D0SP", 48, ParametersG2, butterfly_D0_stop, 0.0f),
+
+    // butterfly_min_freq; //最小的扑动频率
+    AP_GROUPINFO("BF_MINF", 49, ParametersG2, butterfly_min_freq, 1.0f),
     AP_GROUPEND
 };
 
