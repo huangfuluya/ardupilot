@@ -498,6 +498,12 @@ private:
         // time when we first pass min GPS speed on takeoff
         uint32_t takeoff_speed_time_ms;
 
+		// The distance-projected location of the runway centerline for auto takeoffs (Instead of heading lock/hold)
+        Location runway_takeoff_projected_centerline_loc {};
+
+		// Time when the last analysis of plane's runway centerline deviation was checked
+		int32_t runway_takeoff_centerline_deviation_analysed_ms; //only use for print info
+
         // distance to next waypoint
         float wp_distance;
 

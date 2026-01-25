@@ -380,9 +380,40 @@ void Plane::do_takeoff(const AP_Mission::Mission_Command& cmd)
         auto_state.takeoff_pitch_cd = 400;
     }
     auto_state.takeoff_altitude_rel_cm = next_WP_loc.alt - home.alt;
-    next_WP_loc.lat = home.lat + 10;
-    next_WP_loc.lng = home.lng + 10;
-    auto_state.takeoff_speed_time_ms = 0;
+ 
+    if (g2.takeoff_type == 0)
+    {   
+        next_WP_loc.lat = home.lat + 10;
+        next_WP_loc.lng = home.lng + 10;
+    }
+    else{
+        //Assume rolling runway takeoff with fixed runway direction
+        //获取mission中的第一个waypoint类型的航点,cmdid为MAV_CMD_NAV_WAYPOINT
+        AP_Mission::Mission_Command first_WP_cmd;
+        uint16_t start_idx = 1;
+        do {
+            // 当达到最大航点数时跳出，防止死循环
+            if (start_idx >= mission.num_commands()) {
+                gcs().send_text(MAV_SEVERITY_WARNING, "No WP after Takeoff");
+                break;
+            }
+            mission.get_next_cmd(start_idx, first_WP_cmd,false);
+            start_idx++;
+        } while (first_WP_cmd.id != MAV_CMD_NAV_WAYPOINT);
+        if (first_WP_cmd.id == MAV_CMD_NAV_WAYPOINT) {
+            next_WP_loc = first_WP_cmd.content.location;
+        }else{
+            g2.takeoff_type.set(0); //No valid WP found after Takeoff command, revert to hand/bungee launch
+        }
+	    //Project takeoff loc forward 2x as long as the Runway along centerline distance (assume that Takeoff Location is placed at the end of the Runway centerline)
+		float runway_length=current_loc.get_distance(next_WP_loc);
+		auto_state.runway_takeoff_projected_centerline_loc = current_loc;
+		auto_state.runway_takeoff_projected_centerline_loc.offset_bearing(current_loc.get_bearing_to(next_WP_loc)*0.01f, runway_length*2);
+		set_next_WP(auto_state.runway_takeoff_projected_centerline_loc);  //set it as a virtual waypoint to force the nav_controller to keep converging to centerline
+		auto_state.runway_takeoff_centerline_deviation_analysed_ms=millis();
+		auto_state.crosstrack = auto_state.next_wp_crosstrack = true; //For rolling, fixed-direction Runway takeoffs, crosstrack of exact centerline projected waypoint is essential
+    }
+	auto_state.takeoff_speed_time_ms = 0;
     auto_state.takeoff_complete = false; // set flag to use gps ground course during TO. IMU will be doing yaw drift correction.
     auto_state.rotation_complete = false;
     auto_state.height_below_takeoff_to_level_off_cm = 0;
@@ -569,34 +600,68 @@ bool Plane::verify_takeoff()
     trust_ahrs_yaw |= ahrs.dcm_yaw_initialised();
 #endif
     if (trust_ahrs_yaw && steer_state.hold_course_cd == -1) {
-        const float min_gps_speed = 5;
-        if (auto_state.takeoff_speed_time_ms == 0 && 
-            gps.status() >= AP_GPS::GPS_OK_FIX_3D && 
-            gps.ground_speed() > min_gps_speed &&
-            hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
-            auto_state.takeoff_speed_time_ms = millis();
-        }
-        if (auto_state.takeoff_speed_time_ms != 0 &&
-            millis() - auto_state.takeoff_speed_time_ms >= 2000) {
-            // once we reach sufficient speed for good GPS course
-            // estimation we save our current GPS ground course
-            // corrected for summed yaw to set the take off
-            // course. This keeps wings level until we are ready to
-            // rotate, and also allows us to cope with arbitrary
-            // compass errors for auto takeoff
-            float takeoff_course = wrap_PI(radians(gps.ground_course())) - steer_state.locked_course_err;
-            takeoff_course = wrap_PI(takeoff_course);
-            steer_state.hold_course_cd = wrap_360_cd(degrees(takeoff_course)*100);
-            gcs().send_text(MAV_SEVERITY_INFO, "Holding course %d at %.1fm/s (%.1f)",
-                              (int)steer_state.hold_course_cd,
-                              (double)gps.ground_speed(),
-                              (double)degrees(steer_state.locked_course_err));
+        if (g2.takeoff_type == 0) {  // Free hand or bungee launch
+            const float min_gps_speed = 5;
+            if (auto_state.takeoff_speed_time_ms == 0 &&
+                gps.status() >= AP_GPS::GPS_OK_FIX_3D &&
+                gps.ground_speed() > min_gps_speed &&
+                hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
+                auto_state.takeoff_speed_time_ms = millis();
+            }
+            if (auto_state.takeoff_speed_time_ms != 0 &&
+                millis() - auto_state.takeoff_speed_time_ms >= 2000) {
+                // once we reach sufficient speed for good GPS course
+                // estimation we save our current GPS ground course
+                // corrected for summed yaw to set the take off
+                // course. This keeps wings level until we are ready to
+                // rotate, and also allows us to cope with arbitrary
+                // compass errors for auto takeoff
+                float takeoff_course = wrap_PI(radians(gps.ground_course())) - steer_state.locked_course_err;
+                takeoff_course = wrap_PI(takeoff_course);
+                steer_state.hold_course_cd = wrap_360_cd(degrees(takeoff_course)*100);
+                gcs().send_text(MAV_SEVERITY_INFO, "Holding course %d at %.1fm/s (%.1f)",
+                    (int)steer_state.hold_course_cd,
+                    (double)gps.ground_speed(),
+                    (double)degrees(steer_state.locked_course_err));
+            }
+        }else  // Fixed direction runway takeoff
+        {
+            // Do not lock any heading on Runway - even if 100 % correct (ie.
+            // perfectly parallell with Runway centerline) because If the Plane
+            // has already drifted from the centerline, it should not just try
+            // to keep any heading (even if correct) Rather, it might make more
+            // sense to continue steering back towards projected centerline of
+            // the Runway So instead, calculate & display deviation / correction
+            // angle from/to Centerline, feed L1 controller with additional info
+            // if extractable Leave correction to the nav / L1 controller
+            // towards Runway Centerline Projected Waypoint (set in
+            // do_takeoff())
+            auto_state.runway_takeoff_centerline_deviation_analysed_ms = millis();
+            float new_runway_centerline_bearing = current_loc.get_bearing_to(next_WP_loc);
+            // if (gps.ground_speed() >= 1) {
+                gcs().send_text(MAV_SEVERITY_INFO,
+                                "RNWY C.Line Bearing %.2f",
+                                new_runway_centerline_bearing);
+            // }
+            steer_state.hold_course_cd = wrap_360_cd(new_runway_centerline_bearing);
         }
     }
 
-    if (steer_state.hold_course_cd != -1) {
-        // call navigation controller for heading hold
-        nav_controller->update_heading_hold(steer_state.hold_course_cd);
+    // if (steer_state.hold_course_cd != -1) {
+    if ((steer_state.hold_course_cd != -1)) {
+        // nav_controller->update_heading_hold(steer_state.hold_course_cd);
+        if(g2.takeoff_type == 2){
+            if ((gps.ground_speed() >= 1) && (millis() - auto_state.runway_takeoff_centerline_deviation_analysed_ms > 1000)){
+                float new_runway_centerline_bearing = current_loc.get_bearing_to(next_WP_loc);
+                gcs().send_text(MAV_SEVERITY_INFO,
+                                "RNWY C.Line Bearing %.2f",
+                                new_runway_centerline_bearing);
+                auto_state.runway_takeoff_centerline_deviation_analysed_ms = millis();
+            }
+            nav_controller->update_waypoint(home, next_WP_loc);
+        }else{
+            nav_controller->update_heading_hold(steer_state.hold_course_cd);
+        }
     } else {
         nav_controller->update_level_flight();        
     }

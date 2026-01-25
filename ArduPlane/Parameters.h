@@ -591,6 +591,9 @@ public:
 #if AP_PLANE_SYSTEMID_ENABLED
     AP_SystemID systemid;
 #endif
+    
+    //Type of the takeoff (1=Rolling/Runway takeoff, 0=hand / bungee launch)
+	AP_Int8 takeoff_type;
 };
 
 extern const AP_Param::Info var_info[];

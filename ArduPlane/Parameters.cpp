@@ -1302,7 +1302,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: systemid.cpp
     AP_SUBGROUPINFO(systemid, "SID", 38, ParametersG2, AP_SystemID),
 #endif
-    
+    AP_GROUPINFO("TKOFF_TYPE", 39, ParametersG2, takeoff_type, 2), // 0:raw,handlaunch and bungee,1:home to waypoint,2:home to waypoint with navcontrol
     AP_GROUPEND
 };
 

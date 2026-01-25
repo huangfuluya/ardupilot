@@ -781,7 +781,11 @@ public:
 #if HAL_LOGGING_ENABLED
     void set_log_start_mission_item_bit(uint32_t bit) { log_start_mission_item_bit = bit; }
 #endif
-
+    /// get_next_cmd - gets next command found at or after start_index
+    ///     returns true if found, false if not found (i.e. mission complete)
+    ///     accounts for do_jump commands
+    ///     increment_jump_num_times_if_found should be set to true if advancing the active navigation command
+    bool get_next_cmd(uint16_t start_index, Mission_Command& cmd, bool increment_jump_num_times_if_found, bool send_gcs_msg = true);
 private:
     static AP_Mission *_singleton;
 
@@ -828,12 +832,6 @@ private:
     ///     accounts for do-jump commands
     ///     returns true if successfully advanced (can it ever be unsuccessful?)
     void advance_current_do_cmd();
-
-    /// get_next_cmd - gets next command found at or after start_index
-    ///     returns true if found, false if not found (i.e. mission complete)
-    ///     accounts for do_jump commands
-    ///     increment_jump_num_times_if_found should be set to true if advancing the active navigation command
-    bool get_next_cmd(uint16_t start_index, Mission_Command& cmd, bool increment_jump_num_times_if_found, bool send_gcs_msg = true);
 
     /// get_next_do_cmd - gets next "do" or "conditional" command after start_index
     ///     returns true if found, false if not found
