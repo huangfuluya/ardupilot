@@ -503,7 +503,8 @@ private:
 
 		// Time when the last analysis of plane's runway centerline deviation was checked
 		int32_t runway_takeoff_centerline_deviation_analysed_ms; //only use for print info
-
+        
+        int8_t _actived_takeoff_type;
         // distance to next waypoint
         float wp_distance;
 
