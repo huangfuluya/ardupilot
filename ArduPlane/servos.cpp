@@ -38,7 +38,7 @@ void Plane::throttle_slew_limit()
         return;
     }
 
-    uint8_t slewrate = aparm.throttle_slewrate;
+    uint16_t slewrate = aparm.throttle_slewrate;
     if (control_mode == &mode_auto) {
         if (auto_state.takeoff_complete == false && g.takeoff_throttle_slewrate != 0) {
             slewrate = g.takeoff_throttle_slewrate;
@@ -114,7 +114,7 @@ bool Plane::suppress_throttle(void)
         if (is_flying() &&
             millis() - started_flying_ms > MAX(launch_duration_ms, 5000U) && // been flying >5s in any mode
             adjusted_relative_altitude_cm() > 500 && // are >5m above AGL/home
-            labs(ahrs.pitch_sensor) < 3000 && // not high pitch, which happens when held before launch
+            fabsf(ahrs.get_pitch_deg()) < 30 && // not high pitch, which happens when held before launch
             gps_movement) { // definite gps movement
             // we're already flying, do not suppress the throttle. We can get
             // stuck in this condition if we reset a mission and cmd 1 is takeoff
@@ -173,8 +173,8 @@ bool Plane::suppress_throttle(void)
   allowing the user to trim and limit individual servos using the
   SERVOn_* parameters
  */
-void Plane::channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, SRV_Channel::Aux_servo_function_t func2_in,
-                                   SRV_Channel::Aux_servo_function_t func1_out, SRV_Channel::Aux_servo_function_t func2_out) const
+void Plane::channel_function_mixer(SRV_Channel::Function func1_in, SRV_Channel::Function func2_in,
+                                   SRV_Channel::Function func1_out, SRV_Channel::Function func2_out) const
 {
     // the order is setup so that non-reversed servos go "up", and
     // func1 is the "left" channel. Users can adjust with channel
@@ -440,6 +440,19 @@ void ParametersG2::FWD_BATT_CMP::update()
 // Apply throttle scale to min and max limits
 void ParametersG2::FWD_BATT_CMP::apply_min_max(int8_t &min_throttle, int8_t &max_throttle) const
 {
+    // Cut off throttle if FWD_BAT_IDX battery resting voltage is below
+    // FWD_THR_CUTOFF_V (if set), to preserve battery life for the electronics
+    // and actuators. Only applies when the battery monitor is working and the
+    // current mode does auto-throttle.
+    if (is_positive(batt_voltage_throttle_cutoff) &&
+        plane.control_mode->does_auto_throttle() && AP::battery().healthy(batt_idx) &&
+        (AP::battery().voltage_resting_estimate(batt_idx) < batt_voltage_throttle_cutoff)) {
+        min_throttle = 0;
+        max_throttle = 0;
+
+        return;
+    }
+
     // return if not enabled
     if (!enabled) {
         return;
@@ -526,8 +539,8 @@ float Plane::apply_throttle_limits(float throttle_in)
     int8_t max_throttle = aparm.throttle_max.get();
 
 #if AP_ICENGINE_ENABLED
-    // Apply idle governor.
-    g2.ice_control.update_idle_governor(min_throttle);
+    // Get the idle throttle (parameter or idle governor) from AP_ICEngine
+    min_throttle = MAX(min_throttle, g2.ice_control.get_min_throttle_pct());
 #endif
 
     // If reverse thrust is enabled not allowed right now, the minimum throttle must not fall below 0.
@@ -672,10 +685,23 @@ void Plane::set_servos_flaps(void)
         manual_flap_percent = channel_flap->percent_input();
     }
 
-    if (control_mode->does_auto_throttle()) {
+    const auto flap_actual_speed = flight_option_enabled(FlightOptions::FLAP_ACTUAL_SPEED);
+    const bool has_target_airspeed = control_mode->does_auto_throttle();
+    if (has_target_airspeed || flap_actual_speed) {
         int16_t flapSpeedSource = 0;
-        if (ahrs.using_airspeed_sensor()) {
+        float est_airspeed;
+        bool have_airspeed = ahrs.airspeed_EAS(est_airspeed);
+        if (has_target_airspeed && ahrs.using_airspeed_sensor()) {
             flapSpeedSource = target_airspeed_cm * 0.01f;
+            if (flap_actual_speed) {
+                // if we have a target and also want to use actual
+                // speed then use the minimum of the two so we bring
+                // flaps in early when deliberately slowing down
+                flapSpeedSource = MIN(flapSpeedSource, est_airspeed);
+            }
+        } else if (flap_actual_speed && have_airspeed) {
+            // use actual speed directly
+            flapSpeedSource = est_airspeed;
         } else {
             flapSpeedSource = aparm.throttle_cruise;
         }
@@ -733,29 +759,6 @@ void Plane::set_servos_flaps(void)
     // output to flaperons, if any
     flaperon_update();
 }
-
-#if AP_LANDINGGEAR_ENABLED
-/*
-  setup landing gear state
- */
-void Plane::set_landing_gear(void)
-{
-    if (control_mode == &mode_auto && arming.is_armed_and_safety_off() && is_flying() && gear.last_flight_stage != flight_stage) {
-        switch (flight_stage) {
-        case AP_FixedWing::FlightStage::LAND:
-            g2.landing_gear.deploy_for_landing();
-            break;
-        case AP_FixedWing::FlightStage::NORMAL:
-            g2.landing_gear.retract_after_takeoff();
-            break;
-        default:
-            break;
-        }
-    }
-    gear.last_flight_stage = flight_stage;
-}
-#endif // AP_LANDINGGEAR_ENABLED
-
 
 /*
   support for twin-engine planes
@@ -905,11 +908,6 @@ void Plane::set_servos(void)
 
     // setup flap outputs
     set_servos_flaps();
-
-#if AP_LANDINGGEAR_ENABLED
-    // setup landing gear output
-    set_landing_gear();
-#endif
 
     // set airbrake outputs
     airbrake_update();

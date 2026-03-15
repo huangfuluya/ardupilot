@@ -73,7 +73,7 @@ ELSEIF(${ARDUPILOT_CMD} STREQUAL "sub")
 ENDIF()
 
 add_custom_target(showinc ALL
-        COMMAND echo -e
+        COMMAND echo
         "$<TARGET_PROPERTY:${elf_file},INCLUDE_DIRECTORIES>"
         > includes.list
     VERBATIM
@@ -120,6 +120,9 @@ target_link_libraries(${elf_file}
 # Attach additional targets to the executable file for flashing,
 # linker script generation, partition_table generation, etc.
 idf_build_executable(${elf_file})
+
+# wrap malloc to ensure memory is zeroed
+target_link_options(${elf_file} PRIVATE "-Wl,--wrap,malloc")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 

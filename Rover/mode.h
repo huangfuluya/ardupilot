@@ -37,6 +37,9 @@ public:
     // do not allow copying
     CLASS_NO_COPY(Mode);
 
+    // Return true if this mode is enabled, used by MAVLink available mode
+    virtual bool enabled() const { return true; }
+
     // enter this mode, returns false if we failed to enter
     bool enter();
 
@@ -45,6 +48,9 @@ public:
 
     // returns a unique number specific to this mode
     virtual Number mode_number() const = 0;
+
+    // returns full text name
+    virtual const char *name() const = 0;
 
     // returns short text name (up to 4 bytes)
     virtual const char *name4() const = 0;
@@ -120,7 +126,7 @@ public:
     float get_speed_default(bool rtl = false) const;
 
     // set desired speed in m/s
-    virtual bool set_desired_speed(float speed) { return false; }
+    virtual bool set_desired_speed(float speed_ms) { return false; }
 
     // execute the mission in reverse (i.e. backing up)
     void set_reversed(bool value);
@@ -223,6 +229,7 @@ class ModeAcro : public Mode
 public:
 
     Number mode_number() const override { return Number::ACRO; }
+    const char *name() const override { return "Acro"; }
     const char *name4() const override { return "ACRO"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -245,6 +252,7 @@ class ModeAuto : public Mode
 public:
 
     Number mode_number() const override { return Number::AUTO; }
+    const char *name() const override { return "Auto"; }
     const char *name4() const override { return "AUTO"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -272,7 +280,7 @@ public:
     bool reached_destination() const override;
 
     // set desired speed in m/s
-    bool set_desired_speed(float speed) override;
+    bool set_desired_speed(float speed_ms) override;
 
     // start RTL (within auto)
     void start_RTL();
@@ -417,7 +425,11 @@ public:
     CLASS_NO_COPY(ModeCircle);
 
     Number mode_number() const override { return Number::CIRCLE; }
+    const char *name() const override { return "Circle"; }
     const char *name4() const override { return "CIRC"; }
+
+    // return the distance at which the vehicle is considered to be on track along the circle
+    float get_reached_distance() const;
 
     // initialise with specific center location, radius (in meters) and direction
     // replaces use of _enter when initialised from within Auto mode
@@ -511,6 +523,7 @@ public:
 #endif
 
     Number mode_number() const override { return Number::GUIDED; }
+    const char *name() const override { return "Guided"; }
     const char *name4() const override { return "GUID"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -535,7 +548,7 @@ public:
     bool reached_destination() const override;
 
     // set desired speed in m/s
-    bool set_desired_speed(float speed) override;
+    bool set_desired_speed(float speed_ms) override;
 
     // get or set desired location
     bool get_desired_location(Location& destination) const override WARN_IF_UNUSED;
@@ -615,6 +628,7 @@ class ModeHold : public Mode
 public:
 
     Number mode_number() const override { return Number::HOLD; }
+    const char *name() const override { return "Hold"; }
     const char *name4() const override { return "HOLD"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -633,6 +647,7 @@ class ModeLoiter : public Mode
 public:
 
     Number mode_number() const override { return Number::LOITER; }
+    const char *name() const override { return "Loiter"; }
     const char *name4() const override { return "LOIT"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -665,6 +680,7 @@ class ModeManual : public Mode
 public:
 
     Number mode_number() const override { return Number::MANUAL; }
+    const char *name() const override { return "Manual"; }
     const char *name4() const override { return "MANU"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -689,6 +705,7 @@ class ModeRTL : public Mode
 public:
 
     Number mode_number() const override { return Number::RTL; }
+    const char *name() const override { return "RTL"; }
     const char *name4() const override { return "RTL"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -708,7 +725,7 @@ public:
     bool reached_destination() const override;
 
     // set desired speed in m/s
-    bool set_desired_speed(float speed) override;
+    bool set_desired_speed(float speed_ms) override;
 
 protected:
 
@@ -724,7 +741,11 @@ class ModeSmartRTL : public Mode
 public:
 
     Number mode_number() const override { return Number::SMART_RTL; }
+    const char *name() const override { return "Smart RTL"; }
     const char *name4() const override { return "SRTL"; }
+
+    // Return true if this mode is enabled, used by MAVLink available mode
+    bool enabled() const override;
 
     // methods that affect movement of the vehicle in this mode
     void update() override;
@@ -743,7 +764,7 @@ public:
     bool reached_destination() const override { return smart_rtl_state == SmartRTLState::StopAtHome; }
 
     // set desired speed in m/s
-    bool set_desired_speed(float speed) override;
+    bool set_desired_speed(float speed_ms) override;
 
     // save current position for use by the smart_rtl flight mode
     void save_position();
@@ -770,6 +791,7 @@ class ModeSteering : public Mode
 public:
 
     Number mode_number() const override { return Number::STEERING; }
+    const char *name() const override { return "Steering"; }
     const char *name4() const override { return "STER"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -795,7 +817,11 @@ class ModeInitializing : public Mode
 public:
 
     Number mode_number() const override { return Number::INITIALISING; }
+    const char *name() const override { return "Initialising"; }
     const char *name4() const override { return "INIT"; }
+
+    // Return true if this mode is enabled, used by MAVLink available mode
+    bool enabled() const override { return false; };
 
     // methods that affect movement of the vehicle in this mode
     void update() override { }
@@ -816,7 +842,11 @@ class ModeFollow : public Mode
 public:
 
     Number mode_number() const override { return Number::FOLLOW; }
+    const char *name() const override { return "Follow"; }
     const char *name4() const override { return "FOLL"; }
+
+    // Return true if this mode is enabled, used by MAVLink available mode
+    bool enabled() const override;
 
     // methods that affect movement of the vehicle in this mode
     void update() override;
@@ -836,7 +866,7 @@ public:
     float get_distance_to_destination() const override;
 
     // set desired speed in m/s
-    bool set_desired_speed(float speed) override;
+    bool set_desired_speed(float speed_ms) override;
 
 protected:
 
@@ -852,6 +882,7 @@ class ModeSimple : public Mode
 public:
 
     Number mode_number() const override { return Number::SIMPLE; }
+    const char *name() const override { return "Simple"; }
     const char *name4() const override { return "SMPL"; }
 
     // methods that affect movement of the vehicle in this mode
@@ -882,7 +913,11 @@ public:
     CLASS_NO_COPY(ModeDock);
 
     Number mode_number() const override { return Number::DOCK; }
+    const char *name() const override { return "Dock"; }
     const char *name4() const override { return "DOCK"; }
+
+    // Return true if this mode is enabled, used by MAVLink available mode
+    bool enabled() const override;
 
     // methods that affect movement of the vehicle in this mode
     void update() override;
@@ -908,14 +943,14 @@ protected:
     float apply_slowdown(float desired_speed);
 
     // calculate position of dock relative to the vehicle
-    bool calc_dock_pos_rel_vehicle_NE(Vector2f &dock_pos_rel_vehicle) const;
+    bool calc_dock_pos_rel_vehicle_NE_m(Vector2f &dock_pos_rel_vehicle_m) const;
 
     // we force the vehicle to use real dock target vector when this much close to the docking station
-    const float _force_real_target_limit_cm = 300.0f;
+    const float _force_real_target_limit_m = 3.0f;
     // acceptable lateral error in vehicle's position with respect to dock. This is used while slowing down the vehicle
-    const float _acceptable_pos_error_cm = 20.0f;
+    const float _acceptable_pos_error_m = 0.2f;
 
-    Vector2f _dock_pos_rel_origin_cm;   // position vector towards docking target relative to ekf origin
+    Vector2p _dock_pos_rel_origin_m;   // position vector towards docking target relative to ekf origin
     Vector2f _desired_heading_NE;       // unit vector in desired direction of docking
     bool _docking_complete = false;     // flag to mark docking complete when we are close enough to the dock
     bool _loitering = false; // true if we are loitering after mission completion

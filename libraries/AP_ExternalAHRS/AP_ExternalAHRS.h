@@ -20,7 +20,7 @@
 
 #include "AP_ExternalAHRS_config.h"
 
-#if HAL_EXTERNAL_AHRS_ENABLED
+#if AP_EXTERNAL_AHRS_ENABLED
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Param/AP_Param.h>
@@ -34,6 +34,7 @@ class AP_ExternalAHRS {
 
 public:
     friend class AP_ExternalAHRS_backend;
+    friend class AP_ExternalAHRS_SBG;
     friend class AP_ExternalAHRS_VectorNav;
 
     AP_ExternalAHRS();
@@ -59,7 +60,9 @@ public:
 #if AP_EXTERNAL_AHRS_MICROSTRAIN7_ENABLED
         MicroStrain7 = 7,
 #endif
-        // 8 reserved for SBG
+#if AP_EXTERNAL_AHRS_SBG_ENABLED
+        SBG = 8,
+#endif
         // 9 reserved for EulerNav
         // 10 reserved for Aeron
     };
@@ -176,6 +179,7 @@ protected:
 
     enum class OPTIONS {
         VN_UNCOMP_IMU = 1U << 0,
+        SBG_EKF_AS_GNSS = 1U << 1,
     };
     bool option_is_set(OPTIONS option) const { return (options.get() & int32_t(option)) != 0; }
 
@@ -210,5 +214,5 @@ namespace AP {
     AP_ExternalAHRS &externalAHRS();
 };
 
-#endif  // HAL_EXTERNAL_AHRS_ENABLED
+#endif  // AP_EXTERNAL_AHRS_ENABLED
 

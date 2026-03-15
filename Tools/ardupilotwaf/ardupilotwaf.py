@@ -1,6 +1,7 @@
 # encoding: utf-8
 
-from __future__ import print_function
+# flake8: noqa
+
 from waflib import Build, ConfigSet, Configure, Context, Errors, Logs, Options, Utils, Task
 from waflib.Configure import conf
 from waflib.Scripting import run_command
@@ -9,8 +10,6 @@ import os.path, os
 from pathlib import Path
 from collections import OrderedDict
 import subprocess
-
-import ap_persistent
 
 SOURCE_EXTS = [
     '*.S',
@@ -26,7 +25,6 @@ COMMON_VEHICLE_DEPENDENT_CAN_LIBRARIES = [
 ]
 
 COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
-    'AP_Airspeed',
     'AP_AccelCal',
     'AP_ADC',
     'AP_AHRS',
@@ -42,6 +40,7 @@ COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
     'AP_GSOF',
     'AP_HAL',
     'AP_HAL_Empty',
+    'AP_DDS',
     'AP_InertialSensor',
     'AP_Math',
     'AP_Mission',
@@ -53,6 +52,7 @@ COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
     'AP_OpticalFlow',
     'AP_Param',
     'AP_Rally',
+    'AP_LightWareSerial',
     'AP_RangeFinder',
     'AP_Scheduler',
     'AP_SerialManager',
@@ -130,6 +130,7 @@ COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
     'AP_Arming',
     'AP_RCMapper',
     'AP_MultiHeap',
+    'AP_Follow',
 ]
 
 def get_legacy_defines(sketch_name, bld):
@@ -160,14 +161,13 @@ def set_double_precision_flags(flags):
                 flags.remove(opt)
             except ValueError:
                 break
-    flags.append("-DALLOW_DOUBLE_MATH_FUNCTIONS")
+    flags.append("-DAP_MATH_ALLOW_DOUBLE_FUNCTIONS=1")
 
     return flags
 
 IGNORED_AP_LIBRARIES = [
     'doc',
     'AP_Scripting', # this gets explicitly included when it is needed and should otherwise never be globbed in
-    'AP_DDS',
 ]
 
 
@@ -499,12 +499,22 @@ def ap_find_tests(bld, use=[], DOUBLE_PRECISION_SOURCES=[]):
 _versions = []
 
 @conf
-def ap_version_append_str(ctx, k, v):
-    ctx.env['AP_VERSION_ITEMS'] += [(k, '"{}"'.format(os.environ.get(k, v)))]
+def ap_version_append_str(ctx, k, v, consistent_v=None):
+    if ctx.env.CONSISTENT_BUILDS and consistent_v is not None:
+        v = consistent_v # override with consistent value
+    else:
+        v = os.environ.get(k, v) # use v unless defined in environment
+
+    ctx.env['AP_VERSION_ITEMS'] += [(k, f'"{v}"')]
 
 @conf
-def ap_version_append_int(ctx, k, v):
-    ctx.env['AP_VERSION_ITEMS'] += [(k, '{}'.format(os.environ.get(k, v)))]
+def ap_version_append_int(ctx, k, v, consistent_v=None):
+    if ctx.env.CONSISTENT_BUILDS and consistent_v is not None:
+        v = consistent_v # override with consistent value
+    else:
+        v = os.environ.get(k, v) # use v unless defined in environment
+
+    ctx.env['AP_VERSION_ITEMS'] += [(k, f'{v}')]
 
 @conf
 def write_version_header(ctx, tgt):
@@ -680,7 +690,7 @@ arducopter and upload it to my board".
         action='store',
         dest='upload_port',
         default=None,
-        help='''Specify the port to be used with the --upload option. For example a port of /dev/ttyS10 indicates that serial port 10 shuld be used.
+        help='''Specify the port to be used with the --upload option. For example a port of /dev/ttyS10 indicates that serial port 10 should be used.
 ''')
 
     g.add_option('--upload-blueos',
@@ -706,16 +716,6 @@ arducopter and upload it to my board".
         help='Output all test programs.')
 
     g = opt.ap_groups['clean']
-
-    g.add_option('--clean-all-sigs',
-        action='store_true',
-        help='''Clean signatures for all tasks. By default, tasks that scan for
-implicit dependencies (like the compilation tasks) keep the dependency
-information across clean commands, so that that information is changed
-only when really necessary. Also, some tasks that don't really produce
-files persist their signature. This option avoids that behavior when
-cleaning the build.
-''')
 
     g.add_option('--asan',
         action='store_true',

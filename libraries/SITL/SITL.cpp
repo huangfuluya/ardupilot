@@ -117,13 +117,13 @@ const AP_Param::GroupInfo SIM::var_info[] = {
     AP_GROUPINFO("SONAR_ROT",     17, SIM,  sonar_rot, Rotation::ROTATION_PITCH_270),
     // @Param: BATT_VOLTAGE
     // @DisplayName: Simulated battery voltage
-    // @Description: Simulated battery (constant) voltage
+    // @Description: Simulated battery voltage. Constant voltage when SIM_BATT_CAP_AH is 0, otherwise changing this parameter will re-initialize the state of charge of the battery based on this voltage versus the battery's maximum voltage (default is max voltage).
     // @Units: V
     // @User: Advanced
     AP_GROUPINFO("BATT_VOLTAGE",  19, SIM,  batt_voltage,  12.6f),
     // @Param: BATT_CAP_AH
     // @DisplayName: Simulated battery capacity
-    // @Description: Simulated battery capacity
+    // @Description: Simulated battery capacity. Set to 0 for unlimited capacity. Changing this parameter will re-initialize the state of charge of the battery.
     // @Units: Ah
     // @User: Advanced
     AP_GROUPINFO("BATT_CAP_AH",   20, SIM,  batt_capacity_ah,  0),
@@ -227,8 +227,8 @@ const AP_Param::GroupInfo SIM::var_info[] = {
     // @DisplayName: Sim Speedup
     // @Description: Runs the simulation at multiples of normal speed. Do not use if realtime physics, like RealFlight, is being used
     // @Range: 1 10
-    // @User: Advanced    
-    AP_GROUPINFO("SPEEDUP",       52, SIM,  speedup, -1),
+    // @User: Advanced
+    AP_GROUPINFO("SPEEDUP",       52, SIM,  speedup, 1),
     // @Param: IMU_POS
     // @DisplayName: IMU Offsets
     // @Description: XYZ position of the IMU accelerometer relative to the body frame origin
@@ -236,6 +236,11 @@ const AP_Param::GroupInfo SIM::var_info[] = {
     // @Vector3Parameter: 1
     AP_GROUPINFO("IMU_POS",       53, SIM,  imu_pos_offset, 0),
     AP_SUBGROUPEXTENSION("",      54, SIM,  var_ins),
+    // @Param: SONAR_POS
+    // @DisplayName: Sonar Offsets
+    // @Description: XYZ position of the sonar relative to the body frame origin
+    // @Units: m
+    // @Vector3Parameter: 1
     AP_GROUPINFO("SONAR_POS",     55, SIM,  rngfnd_pos_offset, 0),
     // @Param: FLOW_POS
     // @DisplayName: Opflow Pos
@@ -250,7 +255,7 @@ const AP_Param::GroupInfo SIM::var_info[] = {
     AP_GROUPINFO("ENGINE_FAIL",   58, SIM,  engine_fail,  0),
     AP_SUBGROUPINFO(models, "",   59, SIM, SIM::ModelParm),
     AP_SUBGROUPEXTENSION("",      60, SIM,  var_mag),
-#if HAL_SIM_GPS_ENABLED
+#if AP_SIM_GPS_ENABLED
     AP_SUBGROUPEXTENSION("",      61, SIM,  var_gps),
 #endif
     AP_SUBGROUPEXTENSION("",      62, SIM,  var_info3),
@@ -294,7 +299,7 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     // @DisplayName: Wind Profile Type
     // @Description: Selects how wind varies from surface to WIND_T_ALT
     // @Values: 0:square law,1: none, 2:linear-see WIND_T_COEF
-    // @User: Advanced    
+    // @User: Advanced
     AP_GROUPINFO("WIND_T"      ,15, SIM,  wind_type, SIM::WIND_TYPE_SQRT),
     // @Param: WIND_T_ALT
     // @DisplayName: Full Wind Altitude
@@ -327,9 +332,14 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     // @User: Advanced
     AP_GROUPINFO("WOW_PIN",     25, SIM,  wow_pin, -1),
 
-    // vibration frequencies on each axis
+    // @Param: VIB_FREQ
+    // @DisplayName: Vibration frequency
+    // @Description: Frequency of vibration applied to IMU readings in SITL
+    // @Units: Hz
+    // @Vector3Parameter: 1
     AP_GROUPINFO("VIB_FREQ",   26, SIM,  vibe_freq, 0),
 
+    // @Group: PARA_
     // @Path: ./SIM_Parachute.cpp
     AP_SUBGROUPINFO(parachute_sim, "PARA_", 27, SIM, Parachute),
 
@@ -395,6 +405,12 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     // @Description: Ground behavior of aircraft (tailsitter, no movement, forward only)
     AP_GROUPINFO("GND_BEHAV",   41, SIM,  gnd_behav, -1),
 
+    // @Param: IMU_ORIENT
+    // @CopyFieldsFrom: AHRS_ORIENTATION
+    // @DisplayName: IMU orientation
+    // @Description: Simulated orientation of the IMUs
+    AP_GROUPINFO("IMU_ORIENT",   42, SIM,  imu_orientation, 0),
+    
     // sailboat wave and tide simulation parameters
 
     // @Param: WAVE_ENABLE
@@ -460,9 +476,11 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     // @Units: us
     AP_GROUPINFO("LOOP_DELAY",  55, SIM,  loop_delay, 0),
 
+    // @Group: BZ_
     // @Path: ./SIM_Buzzer.cpp
     AP_SUBGROUPINFO(buzzer_sim, "BZ_", 56, SIM, Buzzer),
 
+    // @Group: TA_
     // @Path: ./SIM_ToneAlarm.cpp
     AP_SUBGROUPINFO(tonealarm_sim, "TA_", 57, SIM, ToneAlarm),
 
@@ -519,98 +537,10 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
     // @Description: Scenario for thermalling simulation, for soaring
     AP_GROUPINFO("THML_SCENARI",  12, SIM,  thermal_scenario, 0),
 
-    // @Param: VICON_POS_X
-    // @DisplayName: SITL vicon position on vehicle in Forward direction
-    // @Description: SITL vicon position on vehicle in Forward direction
-    // @Units: m
-    // @Range: 0 10
-    // @User: Advanced
-
-    // @Param: VICON_POS_Y
-    // @DisplayName: SITL vicon position on vehicle in Right direction
-    // @Description: SITL vicon position on vehicle in Right direction
-    // @Units: m
-    // @Range: 0 10
-    // @User: Advanced
-
-    // @Param: VICON_POS_Z
-    // @DisplayName: SITL vicon position on vehicle in Down direction
-    // @Description: SITL vicon position on vehicle in Down direction
-    // @Units: m
-    // @Range: 0 10
-    // @User: Advanced    
-    AP_GROUPINFO("VICON_POS",     14, SIM,  vicon_pos_offset, 0),
-
-    // Buyoancy for submarines
+    // @Param{Sub}: BUOYANCY
+    // @DisplayName: Buoyancy
+    // @Description: Buyoancy for submarines
     AP_GROUPINFO_FRAME("BUOYANCY", 15, SIM, buoyancy, 1, AP_PARAM_FRAME_SUB),
-
-    // @Param: VICON_GLIT_X
-    // @DisplayName: SITL vicon position glitch North
-    // @Description: SITL vicon position glitch North
-    // @Units: m
-    // @User: Advanced
-
-    // @Param: VICON_GLIT_Y
-    // @DisplayName: SITL vicon position glitch East
-    // @Description: SITL vicon position glitch East
-    // @Units: m
-    // @User: Advanced
-
-    // @Param: VICON_GLIT_Z
-    // @DisplayName: SITL vicon position glitch Down
-    // @Description: SITL vicon position glitch Down
-    // @Units: m
-    // @User: Advanced
-    AP_GROUPINFO("VICON_GLIT",    16, SIM,  vicon_glitch, 0),
-
-    // @Param: VICON_FAIL
-    // @DisplayName: SITL vicon failure
-    // @Description: SITL vicon failure
-    // @Values: 0:Vicon Healthy, 1:Vicon Failed
-    // @User: Advanced
-    AP_GROUPINFO("VICON_FAIL",    17, SIM,  vicon_fail, 0),
-
-    // @Param: VICON_YAW
-    // @DisplayName: SITL vicon yaw angle in earth frame
-    // @Description: SITL vicon yaw angle in earth frame
-    // @Units: deg
-    // @Range: 0 360
-    // @User: Advanced
-    AP_GROUPINFO("VICON_YAW",     18, SIM,  vicon_yaw, 0),
-
-    // @Param: VICON_YAWERR
-    // @DisplayName: SITL vicon yaw error
-    // @Description: SITL vicon yaw added to reported yaw sent to vehicle
-    // @Units: deg
-    // @Range: -180 180
-    // @User: Advanced
-    AP_GROUPINFO("VICON_YAWERR",  19, SIM,  vicon_yaw_error, 0),
-
-    // @Param: VICON_TMASK
-    // @DisplayName: SITL vicon type mask
-    // @Description: SITL vicon messages sent
-    // @Bitmask: 0:VISION_POSITION_ESTIMATE, 1:VISION_SPEED_ESTIMATE, 2:VICON_POSITION_ESTIMATE, 3:VISION_POSITION_DELTA, 4:ODOMETRY
-    // @User: Advanced
-    AP_GROUPINFO("VICON_TMASK",   20, SIM,  vicon_type_mask, 3),
-
-    // @Param: VICON_VGLI_X
-    // @DisplayName: SITL vicon velocity glitch North
-    // @Description: SITL vicon velocity glitch North
-    // @Units: m/s
-    // @User: Advanced
-
-    // @Param: VICON_VGLI_Y
-    // @DisplayName: SITL vicon velocity glitch East
-    // @Description: SITL vicon velocity glitch East
-    // @Units: m/s
-    // @User: Advanced
-
-    // @Param: VICON_VGLI_Z
-    // @DisplayName: SITL vicon velocity glitch Down
-    // @Description: SITL vicon velocity glitch Down
-    // @Units: m/s
-    // @User: Advanced
-    AP_GROUPINFO("VICON_VGLI",    21, SIM,  vicon_vel_glitch, 0),
 
     // @Param: RATE_HZ
     // @DisplayName: Loop rate
@@ -623,12 +553,15 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
     // @Description: Number of simulated IMUs to create
     AP_GROUPINFO("IMU_COUNT",    23, SIM,  imu_count,  2),
 
+    // @Group: FTOWESC_
     // @Path: ./SIM_FETtecOneWireESC.cpp
     AP_SUBGROUPINFO(fetteconewireesc_sim, "FTOWESC_", 30, SIM, FETtecOneWireESC),
 
+    // @Group: RICH_
     // @Path: ./SIM_RichenPower.cpp
     AP_SUBGROUPINFO(richenpower_sim, "RICH_", 31, SIM, RichenPower),
 
+    // @Group: IE24_
     // @Path: ./SIM_IntelligentEnergy24.cpp
     AP_SUBGROUPINFO(ie24_sim, "IE24_", 32, SIM, IntelligentEnergy24),
 
@@ -710,6 +643,18 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
     AP_GROUPINFO("OSD_ROWS",     54, SIM,  osd_rows, 16),
 #endif
 
+#if AP_SIM_VOLZ_ENABLED
+    // @Group: VOLZ_
+    // @Path: ./SIM_Volz.cpp
+    AP_SUBGROUPINFO(volz_sim, "VOLZ_", 55, SIM, Volz),
+#endif  //  AP_SIM_VOLZ_ENABLED
+
+#if AP_SIM_VICON_ENABLED
+    // @Group: VICON_
+    // @Path: ./SIM_Vicon.cpp
+    AP_SUBGROUPINFO(vicon, "VICON_", 56, SIM, ViconParms),
+#endif  // AP_SIM_VICON_ENABLED
+
 #ifdef SFML_JOYSTICK
     AP_SUBGROUPEXTENSION("",      63, SIM,  var_sfml_joystick),
 #endif // SFML_JOYSTICK
@@ -718,7 +663,7 @@ const AP_Param::GroupInfo SIM::var_info3[] = {
 };
 
 
-#if HAL_SIM_GPS_ENABLED
+#if AP_SIM_GPS_ENABLED
 // GPS SITL parameters
 const AP_Param::GroupInfo SIM::var_gps[] = {
     //  1 was GPS_DISABLE
@@ -797,7 +742,7 @@ const AP_Param::GroupInfo SIM::var_gps[] = {
 
    AP_GROUPEND
 };
-#endif  // HAL_SIM_GPS_ENABLED
+#endif  // AP_SIM_GPS_ENABLED
 
 // Mag SITL parameters
 const AP_Param::GroupInfo SIM::var_mag[] = {
@@ -806,6 +751,12 @@ const AP_Param::GroupInfo SIM::var_mag[] = {
     // @Description: Scaling factor for simulated vibration from motors
     // @User: Advanced
     AP_GROUPINFO("MAG_RND",        1, SIM,  mag_noise,   0),
+    // @Param: MAG_MOT
+    // @DisplayName: Motor magnetic interference
+    // @Description: Simulates distortion of magnetometer readings caused by motor current
+    // @Units: mGauss/A
+    // @User: Advanced
+    // @Vector3Parameter: 1
     AP_GROUPINFO("MAG_MOT",        2, SIM,  mag_mot, 0),
     // @Param: MAG_DELAY
     // @DisplayName: Mag measurement delay
@@ -813,7 +764,18 @@ const AP_Param::GroupInfo SIM::var_mag[] = {
     // @Units: ms
     // @User: Advanced
     AP_GROUPINFO("MAG_DELAY",      3, SIM,  mag_delay, 0),
+    // @Param: MAG1_OFS
+    // @DisplayName: Magnetometer offset applied to SITL
+    // @Description: Magnetometer offset injected into the simulation
+    // @User: Advanced
+    // @Vector3Parameter: 1
     AP_GROUPINFO("MAG1_OFS",        4, SIM,  mag_ofs[0], 0),
+    // @Param: MAG_ALY
+    // @DisplayName: NED anomaly vector at ground level
+    // @Description: Simulates localized magnetic field distortions at ground level that decays with altitude.
+    // @Units: mGauss
+    // @User: Advanced
+    // @Vector3Parameter: 1
     AP_GROUPINFO("MAG_ALY",        5, SIM,  mag_anomaly_ned, 0),
     // @Param: MAG_ALY_HGT
     // @DisplayName: Magnetic anomaly height
@@ -821,7 +783,35 @@ const AP_Param::GroupInfo SIM::var_mag[] = {
     // @Units: m
     // @User: Advanced
     AP_GROUPINFO("MAG_ALY_HGT",    6, SIM,  mag_anomaly_hgt, 1.0f),
+    // @Param: MAG1_DIA_X
+    // @DisplayName: Magnetometer soft-iron diagonal X component
+    // @Description: DIA_X in the magnetometer soft-iron calibration matrix: [[DIA_X, ODI_X, ODI_Y], [ODI_X, DIA_Y, ODI_Z], [ODI_Y, ODI_Z, DIA_Z]]
+    // @User: Advanced
+
+    // @Param: MAG1_DIA_Y
+    // @DisplayName: Magnetometer soft-iron diagonal Y component
+    // @Description: DIA_Y in the magnetometer soft-iron calibration matrix: [[DIA_X, ODI_X, ODI_Y], [ODI_X, DIA_Y, ODI_Z], [ODI_Y, ODI_Z, DIA_Z]]
+    // @User: Advanced
+
+    // @Param: MAG1_DIA_Z
+    // @DisplayName: Magnetometer soft-iron diagonal Z component
+    // @Description: DIA_Z in the magnetometer soft-iron calibration matrix: [[DIA_X, ODI_X, ODI_Y], [ODI_X, DIA_Y, ODI_Z], [ODI_Y, ODI_Z, DIA_Z]]
+    // @User: Advanced
     AP_GROUPINFO("MAG1_DIA",        7, SIM,  mag_diag[0], 0),
+    // @Param: MAG1_ODI_X
+    // @DisplayName: Magnetometer soft-iron off-diagonal X component
+    // @Description: ODI_X in the magnetometer soft-iron calibration matrix: [[DIA_X, ODI_X, ODI_Y], [ODI_X, DIA_Y, ODI_Z], [ODI_Y, ODI_Z, DIA_Z]]
+    // @User: Advanced
+
+    // @Param: MAG1_ODI_Y
+    // @DisplayName: Magnetometer soft-iron off-diagonal Y component
+    // @Description: ODI_Y in the magnetometer soft-iron calibration matrix: [[DIA_X, ODI_X, ODI_Y], [ODI_X, DIA_Y, ODI_Z], [ODI_Y, ODI_Z, DIA_Z]]
+    // @User: Advanced
+
+    // @Param: MAG1_ODI_Z
+    // @DisplayName: Magnetometer soft-iron off-diagonal Z component
+    // @Description: ODI_Z in the magnetometer soft-iron calibration matrix: [[DIA_X, ODI_X, ODI_Y], [ODI_X, DIA_Y, ODI_Z], [ODI_Y, ODI_Z, DIA_Z]]
+    // @User: Advanced
     AP_GROUPINFO("MAG1_ODI",        8, SIM,  mag_offdiag[0], 0),
     // @Param: MAG1_ORIENT
     // @DisplayName: MAG1 Orientation
@@ -892,8 +882,28 @@ const AP_Param::GroupInfo SIM::var_mag[] = {
     // @User: Advanced
     AP_GROUPINFO("MAG1_FAIL",     26, SIM,  mag_fail[0], 0),
 #if HAL_COMPASS_MAX_SENSORS > 1
+
+    // @Param: MAG2_OFS
+    // @CopyFieldsFrom: SIM_MAG1_OFS
+    // @Vector3Parameter: 1
     AP_GROUPINFO("MAG2_OFS",      19, SIM,  mag_ofs[1], 0),
+    // @Param: MAG2_DIA_X
+    // @CopyFieldsFrom: SIM_MAG1_DIA_X
+
+    // @Param: MAG2_DIA_Y
+    // @CopyFieldsFrom: SIM_MAG1_DIA_Y
+
+    // @Param: MAG2_DIA_Z
+    // @CopyFieldsFrom: SIM_MAG1_DIA_Z
     AP_GROUPINFO("MAG2_DIA",      20, SIM,  mag_diag[1], 0),
+    // @Param: MAG2_ODI_X
+    // @CopyFieldsFrom: SIM_MAG1_ODI_X
+
+    // @Param: MAG2_ODI_Y
+    // @CopyFieldsFrom: SIM_MAG1_ODI_Y
+
+    // @Param: MAG2_ODI_Z
+    // @CopyFieldsFrom: SIM_MAG1_ODI_Z
     AP_GROUPINFO("MAG2_ODI",      21, SIM,  mag_offdiag[1], 0),
     // @Param: MAG2_ORIENT
     // @DisplayName: MAG2 Orientation
@@ -913,8 +923,28 @@ const AP_Param::GroupInfo SIM::var_mag[] = {
     AP_GROUPINFO("MAG2_SCALING",  28, SIM,  mag_scaling[1], 1),
 #endif
 #if HAL_COMPASS_MAX_SENSORS > 2
+
+    // @Param: MAG3_OFS
+    // @CopyFieldsFrom: SIM_MAG1_OFS
+    // @Vector3Parameter: 1
     AP_GROUPINFO("MAG3_OFS",      23, SIM,  mag_ofs[2], 0),
+    // @Param: MAG3_DIA_X
+    // @CopyFieldsFrom: SIM_MAG1_DIA_X
+
+    // @Param: MAG3_DIA_Y
+    // @CopyFieldsFrom: SIM_MAG1_DIA_Y
+
+    // @Param: MAG3_DIA_Z
+    // @CopyFieldsFrom: SIM_MAG1_DIA_Z
     AP_GROUPINFO("MAG3_DIA",      24, SIM,  mag_diag[2], 0),
+    // @Param: MAG3_ODI_X
+    // @CopyFieldsFrom: SIM_MAG1_ODI_X
+
+    // @Param: MAG3_ODI_Y
+    // @CopyFieldsFrom: SIM_MAG1_ODI_Y
+
+    // @Param: MAG3_ODI_Z
+    // @CopyFieldsFrom: SIM_MAG1_ODI_Z
     AP_GROUPINFO("MAG3_ODI",      25, SIM,  mag_offdiag[2], 0),
     // @Param: MAG3_FAIL
     // @DisplayName: MAG3 Failure
@@ -1108,6 +1138,11 @@ const AP_Param::GroupInfo SIM::var_ins[] = {
     // @Vector3Parameter: 1
     AP_GROUPINFO("ACC3_SCAL",    24, SIM, accel_scale[2], 0),
 #endif
+    // @Param: ACC_TRIM
+    // @DisplayName: Accelerometer trim
+    // @Description: Trim applied to simulated accelerometer
+    // @User: Advanced
+    // @Vector3Parameter: 1
     AP_GROUPINFO("ACC_TRIM",     25, SIM, accel_trim, 0),
 
 #if APM_BUILD_TYPE(APM_BUILD_Rover)
@@ -1140,59 +1175,27 @@ const AP_Param::GroupInfo SIM::var_ins[] = {
     AP_GROUPINFO("ACC_FILE_RW", 30, SIM, accel_file_rw, INSFileMode::INS_FILE_NONE),
 #endif
 
-    // @Param: GYR1_BIAS_X
-    // @DisplayName: First Gyro bias on X axis
-    // @Description: First Gyro bias on X axis
+    // @Param: GYR1_BIAS
+    // @DisplayName: First Gyro bias
+    // @Description: First Gyro bias
     // @Units: rad/s
     // @User: Advanced
-
-    // @Param: GYR1_BIAS_Y
-    // @DisplayName: First Gyro bias on Y axis
-    // @Description: First Gyro bias on Y axis
-    // @Units: rad/s
-    // @User: Advanced
-
-    // @Param: GYR1_BIAS_Z
-    // @DisplayName: First Gyro bias on Z axis
-    // @Description: First Gyro bias on Z axis
-    // @Units: rad/s
-    // @User: Advanced
-
-
+    // @Vector3Parameter: 1
     AP_GROUPINFO("GYR1_BIAS",     31, SIM, gyro_bias[0], 0),
 #if INS_MAX_INSTANCES > 1
-    // @Param: GYR2_BIAS_X
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_X
-    // @DisplayName: Second Gyro bias on X axis
-    // @Description: Second Gyro bias on X axis
-
-    // @Param: GYR2_BIAS_Y
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Y
-    // @DisplayName: Second Gyro bias on Y axis
-    // @Description: Second Gyro bias on Y axis
-
-    // @Param: GYR2_BIAS_Z
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Z
-    // @DisplayName: Second Gyro bias on Z axis
-    // @Description: Second Gyro bias on Z axis
+    // @Param: GYR2_BIAS
+    // @CopyFieldsFrom: SIM_GYR1_BIAS
+    // @DisplayName: Second Gyro bias
+    // @Description: Second Gyro bias
+    // @Vector3Parameter: 1
     AP_GROUPINFO("GYR2_BIAS",     32, SIM, gyro_bias[1], 0),
 #endif
 #if INS_MAX_INSTANCES > 2
-    // @Param: GYR3_BIAS_X
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_X
-    // @DisplayName: Third Gyro bias on X axis
-    // @Description: Third Gyro bias on X axis
-
-    // @Param: GYR3_BIAS_Y
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Y
-    // @DisplayName: Third Gyro bias on Y axis
-    // @Description: Third Gyro bias on Y axis
-
-    // @Param: GYR3_BIAS_Z
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Z
-    // @DisplayName: Third Gyro bias on Z axis
-    // @Description: Third Gyro bias on Z axis
-
+    // @Param: GYR3_BIAS
+    // @CopyFieldsFrom: SIM_GYR1_BIAS
+    // @DisplayName: Third Gyro bias
+    // @Description: Third Gyro bias
+    // @Vector3Parameter: 1
     AP_GROUPINFO("GYR3_BIAS",     33, SIM, gyro_bias[2], 0),
 #endif
 
@@ -1232,21 +1235,11 @@ const AP_Param::GroupInfo SIM::var_ins[] = {
     // @Vector3Parameter: 1
     AP_GROUPINFO("ACC4_BIAS",    39, SIM, accel_bias[3], 0),
 
-    // @Param: GYR4_BIAS_X
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_X
-    // @DisplayName: Fourth Gyro bias on X axis
-    // @Description: Fourth Gyro bias on X axis
-
-    // @Param: GYR4_BIAS_Y
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Y
-    // @DisplayName: Fourth Gyro bias on Y axis
-    // @Description: Fourth Gyro bias on Y axis
-
-    // @Param: GYR4_BIAS_Z
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Z
-    // @DisplayName: Fourth Gyro bias on Z axis
-    // @Description: Fourth Gyro bias on Z axis
-
+    // @Param: GYR4_BIAS
+    // @CopyFieldsFrom: SIM_GYR1_BIAS
+    // @DisplayName: Fourth Gyro bias
+    // @Description: Fourth Gyro bias
+    // @Vector3Parameter: 1
     AP_GROUPINFO("GYR4_BIAS",    40, SIM, gyro_bias[3], 0),
 
 #endif
@@ -1288,21 +1281,11 @@ const AP_Param::GroupInfo SIM::var_ins[] = {
     // @Vector3Parameter: 1
     AP_GROUPINFO("ACC5_BIAS",    46, SIM, accel_bias[4], 0),
 
-    // @Param: GYR5_BIAS_X
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_X
-    // @DisplayName: Fifth Gyro bias on X axis
-    // @Description: Fifth Gyro bias on X axis
-
-    // @Param: GYR5_BIAS_Y
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Y
-    // @DisplayName: Fifth Gyro bias on Y axis
-    // @Description: Fifth Gyro bias on Y axis
-
-    // @Param: GYR5_BIAS_Z
-    // @CopyFieldsFrom: SIM_GYR1_BIAS_Z
-    // @DisplayName: Fifth Gyro bias on Z axis
-    // @Description: Fifth Gyro bias on Z axis
-
+    // @Param: GYR5_BIAS
+    // @CopyFieldsFrom: SIM_GYR1_BIAS
+    // @DisplayName: Fifth Gyro bias
+    // @Description: Fifth Gyro bias
+    // @Vector3Parameter: 1
     AP_GROUPINFO("GYR5_BIAS",    47, SIM, gyro_bias[4], 0),
 #endif
 
@@ -1318,17 +1301,217 @@ const AP_Param::GroupInfo SIM::var_ins[] = {
 
     // the IMUT parameters must be last due to the enable parameters
 #if HAL_INS_TEMPERATURE_CAL_ENABLE
+
+    // @Param: IMUT1_ENABLE
+    // @DisplayName: Enable simulated temperature disturbance for sensor data
+    // @Description: Enable the injection of temperature disturbance to the accelerometer and gyroscope data to simulate temperature calibration
+    // @Values: 0:Disable,1:Enabled, 2: Learn Calibration
+    // @User: Advanced
+
+    // @Param: IMUT1_ACC1
+    // @DisplayName: Applied simulated acceleration to accelerometer
+    // @Description: This is the applied simulated acceleration to the 1st accelerometer
+    // @User: Advanced
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT1_ACC2
+    // @DisplayName: Applied simulated acceleration to accelerometer
+    // @Description: This is the applied simulated acceleration to the 2nd accelerometer
+    // @User: Advanced
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT1_ACC3
+    // @DisplayName: Applied simulated acceleration to accelerometer
+    // @Description: This is the applied simulated acceleration to the 3rd accelerometer
+    // @User: Advanced
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT1_GYR1
+    // @DisplayName: Applied simulated angular rate to gyroscope
+    // @Description: This is the applied simulated angular rate to the 1st gyroscope
+    // @User: Advanced
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT1_GYR2
+    // @DisplayName: Applied simulated angular rate to gyroscope
+    // @Description: This is the applied simulated angular rate to the 2nd gyroscope
+    // @User: Advanced
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT1_GYR3
+    // @DisplayName: Applied simulated angular rate to gyroscope
+    // @Description: This is the applied simulated angular rate to the 3rd gyroscope
+    // @User: Advanced
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT1_TMAX
+    // @DisplayName: Simulated temperature calibration max
+    // @Description: The maximum simulated temperature that the calibration is valid for. This must be at least 10 degrees above TMIN for calibration
+    // @Units: degC
+    // @Range: -70 80
+    // @User: Advanced
+
+    // @Param: IMUT1_TMIN
+    // @DisplayName: Simulated temperature calibration min  
+    // @Description: The minimum simulated temperature that the calibration is valid for
+    // @Units: degC
+    // @Range: -70 80
+    // @User: Advanced
     AP_SUBGROUPINFO(imu_tcal[0], "IMUT1_", 61, SIM, AP_InertialSensor_TCal),
 #if INS_MAX_INSTANCES > 1
+
+    // @Param: IMUT2_ENABLE
+    // @CopyFieldsFrom: SIM_IMUT1_ENABLE
+    // @DisplayName: Enable simulated temperature disturbance for sensor data
+
+    // @Param: IMUT2_ACC1
+    // @CopyFieldsFrom: SIM_IMUT1_ACC1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT2_ACC2
+    // @CopyFieldsFrom: SIM_IMUT1_ACC2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT2_ACC3
+    // @CopyFieldsFrom: SIM_IMUT1_ACC3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT2_GYR1
+    // @CopyFieldsFrom: SIM_IMUT1_GYR1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT2_GYR2
+    // @CopyFieldsFrom: SIM_IMUT1_GYR2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT2_GYR3
+    // @CopyFieldsFrom: SIM_IMUT1_GYR3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT2_TMAX
+    // @CopyFieldsFrom: SIM_IMUT1_TMAX
+    // @DisplayName: Simulated temperature calibration max
+
+    // @Param: IMUT2_TMIN
+    // @CopyFieldsFrom: SIM_IMUT1_TMIN
+    // @DisplayName: Simulated temperature calibration min
     AP_SUBGROUPINFO(imu_tcal[1], "IMUT2_", 62, SIM, AP_InertialSensor_TCal),
 #endif
 #if INS_MAX_INSTANCES > 2
+
+    // @Param: IMUT3_ENABLE
+    // @CopyFieldsFrom: SIM_IMUT1_ENABLE
+    // @DisplayName: Enable simulated temperature disturbance for sensor data
+
+    // @Param: IMUT3_ACC1
+    // @CopyFieldsFrom: SIM_IMUT1_ACC1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT3_ACC2
+    // @CopyFieldsFrom: SIM_IMUT1_ACC2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT3_ACC3
+    // @CopyFieldsFrom: SIM_IMUT1_ACC3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT3_GYR1
+    // @CopyFieldsFrom: SIM_IMUT1_GYR1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT3_GYR2
+    // @CopyFieldsFrom: SIM_IMUT1_GYR2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT3_GYR3
+    // @CopyFieldsFrom: SIM_IMUT1_GYR3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT3_TMAX
+    // @CopyFieldsFrom: SIM_IMUT1_TMAX
+    // @DisplayName: Simulated temperature calibration max
+
+    // @Param: IMUT3_TMIN
+    // @CopyFieldsFrom: SIM_IMUT1_TMIN
+    // @DisplayName: Simulated temperature calibration min
     AP_SUBGROUPINFO(imu_tcal[2], "IMUT3_", 63, SIM, AP_InertialSensor_TCal),
 #endif
 #if INS_MAX_INSTANCES > 3
+
+    // @Param: IMUT4_ENABLE
+    // @CopyFieldsFrom: SIM_IMUT1_ENABLE
+    // @DisplayName: Enable simulated temperature disturbance for sensor data
+
+    // @Param: IMUT4_ACC1
+    // @CopyFieldsFrom: SIM_IMUT1_ACC1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT4_ACC2
+    // @CopyFieldsFrom: SIM_IMUT1_ACC2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT4_ACC3
+    // @CopyFieldsFrom: SIM_IMUT1_ACC3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT4_GYR1
+    // @CopyFieldsFrom: SIM_IMUT1_GYR1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT4_GYR2
+    // @CopyFieldsFrom: SIM_IMUT1_GYR2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT4_GYR3
+    // @CopyFieldsFrom: SIM_IMUT1_GYR3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT4_TMAX
+    // @CopyFieldsFrom: SIM_IMUT1_TMAX
+    // @DisplayName: Simulated temperature calibration max
+
+    // @Param: IMUT4_TMIN
+    // @CopyFieldsFrom: SIM_IMUT1_TMIN
+    // @DisplayName: Simulated temperature calibration min 
     AP_SUBGROUPINFO(imu_tcal[3], "IMUT4_", 60, SIM, AP_InertialSensor_TCal),
 #endif
 #if INS_MAX_INSTANCES > 4
+
+    // @Param: IMUT5_ENABLE
+    // @CopyFieldsFrom: SIM_IMUT1_ENABLE
+    // @DisplayName: Enable simulated temperature disturbance for sensor data
+
+    // @Param: IMUT5_ACC1
+    // @CopyFieldsFrom: SIM_IMUT1_ACC1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT5_ACC2
+    // @CopyFieldsFrom: SIM_IMUT1_ACC2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT5_ACC3
+    // @CopyFieldsFrom: SIM_IMUT1_ACC3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT5_GYR1
+    // @CopyFieldsFrom: SIM_IMUT1_GYR1
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT5_GYR2
+    // @CopyFieldsFrom: SIM_IMUT1_GYR2
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT5_GYR3
+    // @CopyFieldsFrom: SIM_IMUT1_GYR3
+    // @Vector3Parameter: 1
+
+    // @Param: IMUT5_TMAX
+    // @CopyFieldsFrom: SIM_IMUT1_TMAX
+    // @DisplayName: Simulated temperature calibration max
+
+    // @Param: IMUT5_TMIN
+    // @CopyFieldsFrom: SIM_IMUT1_TMIN
+    // @DisplayName: Simulated temperature calibration min 
     AP_SUBGROUPINFO(imu_tcal[4], "IMUT5_", 59, SIM, AP_InertialSensor_TCal),
 #endif
 #endif  // HAL_INS_TEMPERATURE_CAL_ENABLE
@@ -1373,9 +1556,15 @@ const AP_Param::GroupInfo SIM::ModelParm::var_info[] = {
     AP_SUBGROUPINFO(tether_sim, "TETH_", 6, SIM::ModelParm, TetherSim),
 #endif
 
+#if AP_SIM_AIS_ENABLED
+    // @Group: AIS_
+    // @Path: ./SIM_AIS.cpp
+    AP_SUBGROUPPTR(ais_ptr, "AIS_", 7, SIM::ModelParm, AIS),
+#endif  // AP_SIM_AIS_ENABLED
+
     AP_GROUPEND
 };
-    
+
 const Location post_origin {
     518752066,
     146487830,
@@ -1400,9 +1589,9 @@ void SIM::simstate_send(mavlink_channel_t chan) const
     }
 
     mavlink_msg_simstate_send(chan,
-                              ToRad(state.rollDeg),
-                              ToRad(state.pitchDeg),
-                              ToRad(yaw),
+                              radians(state.rollDeg),
+                              radians(state.pitchDeg),
+                              radians(yaw),
                               state.xAccel,
                               state.yAccel,
                               state.zAccel,
@@ -1432,9 +1621,9 @@ void SIM::sim_state_send(mavlink_channel_t chan) const
             state.quaternion.q2,
             state.quaternion.q3,
             state.quaternion.q4,
-            ToRad(state.rollDeg),
-            ToRad(state.pitchDeg),
-            ToRad(yaw),
+            radians(state.rollDeg),
+            radians(state.pitchDeg),
+            radians(yaw),
             state.xAccel,
             state.yAccel,
             state.zAccel,
@@ -1493,11 +1682,11 @@ void SIM::convert_body_frame(double rollDeg, double pitchDeg,
 {
     double phi, theta, phiDot, thetaDot, psiDot;
 
-    phi = ToRad(rollDeg);
-    theta = ToRad(pitchDeg);
-    phiDot = ToRad(rollRate);
-    thetaDot = ToRad(pitchRate);
-    psiDot = ToRad(yawRate);
+    phi = radians(rollDeg);
+    theta = radians(pitchDeg);
+    phiDot = radians(rollRate);
+    thetaDot = radians(pitchRate);
+    psiDot = radians(yawRate);
 
     *p = phiDot - psiDot*sin(theta);
     *q = cos(phi)*thetaDot + sin(phi)*psiDot*cos(theta);
@@ -1541,7 +1730,7 @@ float SIM::measure_distance_at_angle_bf(const Location &location, float angle) c
 {
     // should we populate state.rangefinder_m[...] from this?
     Vector2f vehicle_pos_cm;
-    if (!location.get_vector_xy_from_origin_NE(vehicle_pos_cm)) {
+    if (!location.get_vector_xy_from_origin_NE_cm(vehicle_pos_cm)) {
         // should probably use SITL variables...
         return 0.0f;
     }
@@ -1569,7 +1758,7 @@ float SIM::measure_distance_at_angle_bf(const Location &location, float angle) c
     Location location2 = location;
     location2.offset_bearing(wrap_180(angle + state.yawDeg), 200);
     Vector2f ray_endpos_cm;
-    if (!location2.get_vector_xy_from_origin_NE(ray_endpos_cm)) {
+    if (!location2.get_vector_xy_from_origin_NE_cm(ray_endpos_cm)) {
         // should probably use SITL variables...
         return 0.0f;
     }
@@ -1606,9 +1795,10 @@ float SIM::measure_distance_at_angle_bf(const Location &location, float angle) c
             }
 #endif
             Vector2f post_position_cm;
-            if (!post_location.get_vector_xy_from_origin_NE(post_position_cm)) {
+            if (!post_location.get_vector_xy_from_origin_NE_cm(post_position_cm)) {
                 // should probably use SITL variables...
-                return 0.0f;
+                min_dist_cm = 0;
+                goto OUT;
             }
             Vector2f intersection_point_cm;
             if (Vector2f::circle_segment_intersection(ray_endpos_cm, vehicle_pos_cm, post_position_cm, radius_cm, intersection_point_cm)) {
@@ -1630,6 +1820,8 @@ float SIM::measure_distance_at_angle_bf(const Location &location, float angle) c
             }
         }
     }
+
+OUT:
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
     if (postfile != nullptr) {
         fclose(postfile);

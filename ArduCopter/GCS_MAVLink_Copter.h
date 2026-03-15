@@ -17,12 +17,7 @@ public:
 
 protected:
 
-    uint32_t telem_delay() const override;
-
     MAV_RESULT handle_flight_termination(const mavlink_command_int_t &packet) override;
-
-    uint8_t sysid_my_gcs() const override;
-    bool sysid_enforce() const override;
 
     bool params_ready() const override;
     void send_banner() override;
@@ -41,10 +36,6 @@ protected:
     MAV_RESULT handle_command_int_packet(const mavlink_command_int_t &packet, const mavlink_message_t &msg) override;
     MAV_RESULT handle_command_int_do_reposition(const mavlink_command_int_t &packet);
     MAV_RESULT handle_command_pause_continue(const mavlink_command_int_t &packet);
-
-#if HAL_MOUNT_ENABLED
-    void handle_mount_message(const mavlink_message_t &msg) override;
-#endif
 
     void handle_message_set_attitude_target(const mavlink_message_t &msg);
     void handle_message_set_position_target_global_int(const mavlink_message_t &msg);
@@ -85,7 +76,7 @@ private:
     void packetReceived(const mavlink_status_t &status,
                         const mavlink_message_t &msg) override;
 
-    MAV_MODE base_mode() const override;
+    uint8_t base_mode() const override;
     MAV_STATE vehicle_system_status() const override;
 
     float vfr_hud_airspeed() const override;

@@ -8,12 +8,7 @@ public:
 
     using GCS_MAVLINK::GCS_MAVLINK;
 
-    uint8_t sysid_my_gcs() const override;
 protected:
-
-    uint32_t telem_delay() const override {
-        return 0;
-    };
 
     MAV_RESULT handle_flight_termination(const mavlink_command_int_t &packet) override;
 
@@ -23,6 +18,7 @@ protected:
 
     MAV_RESULT handle_command_int_packet(const mavlink_command_int_t &packet, const mavlink_message_t &msg) override;
     MAV_RESULT handle_command_int_do_reposition(const mavlink_command_int_t &packet);
+    void handle_manual_control_axes(const mavlink_manual_control_t &packet, const uint32_t tnow) override;
 
     // override sending of scaled_pressure3 to send on-board temperature:
     void send_scaled_pressure3() override;
@@ -49,7 +45,7 @@ private:
 
     bool send_info(void);
 
-    MAV_MODE base_mode() const override;
+    uint8_t base_mode() const override;
     MAV_STATE vehicle_system_status() const override;
 
     int16_t vfr_hud_throttle() const override;
@@ -61,6 +57,15 @@ private:
     MAV_RESULT handle_MAV_CMD_DO_MOTOR_TEST(const mavlink_command_int_t &packet);
     MAV_RESULT handle_MAV_CMD_NAV_LOITER_UNLIM(const mavlink_command_int_t &packet);
     MAV_RESULT handle_MAV_CMD_NAV_LAND(const mavlink_command_int_t &packet);
+
+#if AP_RANGEFINDER_ENABLED
+    // send WATER_DEPTH - metres and temperature
+    void send_water_depth();
+    // state variable for the last rangefinder we sent a WATER_DEPTH
+    // message for.  We cycle through the rangefinder backends to
+    // limit the amount of telemetry bandwidth we consume.
+    uint8_t last_WATER_DEPTH_index;
+#endif // AP_RANGEFINDER_ENABLED
 
 #if HAL_HIGH_LATENCY2_ENABLED
     int16_t high_latency_target_altitude() const override;

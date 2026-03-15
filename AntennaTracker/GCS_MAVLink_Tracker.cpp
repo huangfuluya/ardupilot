@@ -6,7 +6,7 @@ MAV_TYPE GCS_Tracker::frame_type() const
     return MAV_TYPE_ANTENNA_TRACKER;
 }
 
-MAV_MODE GCS_MAVLINK_Tracker::base_mode() const
+uint8_t GCS_MAVLINK_Tracker::base_mode() const
 {
     uint8_t _base_mode = MAV_MODE_FLAG_CUSTOM_MODE_ENABLED;
     // work out the base_mode. This value is not very useful
@@ -47,7 +47,7 @@ MAV_MODE GCS_MAVLINK_Tracker::base_mode() const
         _base_mode |= MAV_MODE_FLAG_SAFETY_ARMED;
     }
 
-    return (MAV_MODE)_base_mode;
+    return _base_mode;
 }
 
 uint32_t GCS_Tracker::custom_mode() const
@@ -61,6 +61,87 @@ MAV_STATE GCS_MAVLINK_Tracker::vehicle_system_status() const
         return MAV_STATE_CALIBRATING;
     }
     return MAV_STATE_ACTIVE;
+}
+
+void GCS_MAVLINK_Tracker::send_attitude_target()
+{
+    Quaternion quat;
+    bool use_yaw_rate = false;
+    float yaw_rate_rads = 0.0;
+    bool use_pitch_rate = false;
+    float pitch_rate_rads = 0.0;
+    float quat_out[4] {0.0, 0.0, 0.0, 0.0};
+    uint16_t typemask = ATTITUDE_TARGET_TYPEMASK_BODY_ROLL_RATE_IGNORE |
+                        ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE;
+
+    if (tracker.mode->number() == Mode::Number::GUIDED) {
+        quat = tracker.mode_guided.get_attitude_target_quat();
+        use_yaw_rate = tracker.mode_guided.get_attitude_target_use_yaw_rate();
+        use_pitch_rate = tracker.mode_guided.get_attitude_target_use_pitch_rate();
+        quat_out[0] = quat.q1;
+        quat_out[1] = quat.q2;
+        quat_out[2] = quat.q3;
+        quat_out[3] = quat.q4;
+        if (!use_yaw_rate) {
+            typemask |= ATTITUDE_TARGET_TYPEMASK_BODY_YAW_RATE_IGNORE;
+        } else {
+            yaw_rate_rads = tracker.mode_guided.get_attitude_target_yaw_rate_rads();
+        }
+        if (!use_pitch_rate) {
+            typemask |= ATTITUDE_TARGET_TYPEMASK_BODY_PITCH_RATE_IGNORE;
+        } else {
+            pitch_rate_rads = tracker.mode_guided.get_attitude_target_pitch_rate_rads();
+        }
+
+    } else if (tracker.mode->number() == Mode::Number::AUTO) {
+        float yaw = tracker.mode_auto.get_auto_target_yaw_deg();
+        float pitch = tracker.mode_auto.get_auto_target_pitch_deg();
+        quat.from_euler(0, radians(pitch), radians(yaw));
+        quat_out[0] = quat.q1;
+        quat_out[1] = quat.q2;
+        quat_out[2] = quat.q3;
+        quat_out[3] = quat.q4;
+
+        typemask |=
+            ATTITUDE_TARGET_TYPEMASK_BODY_YAW_RATE_IGNORE |
+            ATTITUDE_TARGET_TYPEMASK_BODY_PITCH_RATE_IGNORE |
+            ATTITUDE_TARGET_TYPEMASK_BODY_ROLL_RATE_IGNORE |
+            ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE;
+
+    } else if (tracker.mode->number() == Mode::Number::SCAN) {
+        struct Tracker::NavStatus &nav_status = tracker.nav_status;
+        Parameters &g = tracker.g;
+
+        if (!nav_status.manual_control_yaw) {
+            yaw_rate_rads = radians(g.scan_speed_yaw);
+        } else {
+            typemask |= ATTITUDE_TARGET_TYPEMASK_BODY_YAW_RATE_IGNORE;
+        }
+
+        if (!nav_status.manual_control_pitch) {
+            pitch_rate_rads = radians(g.scan_speed_pitch);
+        } else {
+            typemask |= ATTITUDE_TARGET_TYPEMASK_BODY_PITCH_RATE_IGNORE;
+        }
+
+        typemask |= ATTITUDE_TARGET_TYPEMASK_ATTITUDE_IGNORE;
+
+    } else if (tracker.mode->number() == Mode::Number::STOP) {
+        typemask |= ATTITUDE_TARGET_TYPEMASK_ATTITUDE_IGNORE;
+
+    } else {
+        return;
+    }
+
+    mavlink_msg_attitude_target_send(
+        chan,
+        AP_HAL::millis(), // time since boot (ms)
+        typemask,         // Bitmask that tells the system what control dimensions should be ignored by the vehicle
+        quat_out,         // Attitude quaternion [w, x, y, z] order, zero-rotation is [1, 0, 0, 0], unit-length
+        0,                // roll rate (rad/s)
+        pitch_rate_rads,  // pitch rate (rad/s)
+        yaw_rate_rads,    // yaw rate (rad/s)
+        0);               // Collective thrust
 }
 
 void GCS_MAVLINK_Tracker::send_nav_controller_output() const
@@ -94,29 +175,33 @@ void GCS_MAVLINK_Tracker::handle_set_attitude_target(const mavlink_message_t &ms
     if (!is_zero(packet.body_roll_rate)) {
         return;
     }
-    if (!(packet.type_mask & (1<<0))) {
+    if (!(packet.type_mask & ATTITUDE_TARGET_TYPEMASK_BODY_ROLL_RATE_IGNORE)) {
         // not told to ignore body roll rate
         return;
     }
-    if (!(packet.type_mask & (1<<6))) {
+    if (!(packet.type_mask & ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE)) {
         // not told to ignore throttle
         return;
     }
-    if (packet.type_mask & (1<<7)) {
+    if (packet.type_mask & ATTITUDE_TARGET_TYPEMASK_ATTITUDE_IGNORE) {
         // told to ignore attitude (we don't allow continuous motion yet)
         return;
     }
-    if ((packet.type_mask & (1<<3)) && (packet.type_mask&(1<<4))) {
+    if ((packet.type_mask & ATTITUDE_TARGET_TYPEMASK_BODY_PITCH_RATE_IGNORE) &&
+        (packet.type_mask & ATTITUDE_TARGET_TYPEMASK_BODY_YAW_RATE_IGNORE)) {
         // told to ignore both pitch and yaw rates - nothing to do?!
         return;
     }
 
-    const bool use_yaw_rate = !(packet.type_mask & (1<<2));
+    const bool use_yaw_rate = !(packet.type_mask & ATTITUDE_TARGET_TYPEMASK_BODY_YAW_RATE_IGNORE);
+    const bool use_pitch_rate = !(packet.type_mask & ATTITUDE_TARGET_TYPEMASK_BODY_PITCH_RATE_IGNORE);
 
     tracker.mode_guided.set_angle(
         Quaternion(packet.q[0],packet.q[1],packet.q[2],packet.q[3]),
         use_yaw_rate,
-        packet.body_yaw_rate);
+        packet.body_yaw_rate,
+        use_pitch_rate,
+        packet.body_pitch_rate);
 }
 
 /*
@@ -162,182 +247,6 @@ void GCS_MAVLINK_Tracker::send_pid_tuning()
 }
 
 /*
-  default stream rates to 1Hz
- */
-const AP_Param::GroupInfo GCS_MAVLINK_Parameters::var_info[] = {
-    // @Param: RAW_SENS
-    // @DisplayName: Raw sensor stream rate
-    // @Description: Raw sensor stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("RAW_SENS", 0, GCS_MAVLINK_Parameters, streamRates[0],  1),
-
-    // @Param: EXT_STAT
-    // @DisplayName: Extended status stream rate to ground station
-    // @Description: Extended status stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("EXT_STAT", 1, GCS_MAVLINK_Parameters, streamRates[1],  1),
-
-    // @Param: RC_CHAN
-    // @DisplayName: RC Channel stream rate to ground station
-    // @Description: RC Channel stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("RC_CHAN",  2, GCS_MAVLINK_Parameters, streamRates[2],  1),
-
-    // @Param: RAW_CTRL
-    // @DisplayName: Raw Control stream rate to ground station
-    // @Description: Raw Control stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("RAW_CTRL", 3, GCS_MAVLINK_Parameters, streamRates[3],  1),
-
-    // @Param: POSITION
-    // @DisplayName: Position stream rate to ground station
-    // @Description: Position stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("POSITION", 4, GCS_MAVLINK_Parameters, streamRates[4],  1),
-
-    // @Param: EXTRA1
-    // @DisplayName: Extra data type 1 stream rate to ground station
-    // @Description: Extra data type 1 stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("EXTRA1",   5, GCS_MAVLINK_Parameters, streamRates[5],  1),
-
-    // @Param: EXTRA2
-    // @DisplayName: Extra data type 2 stream rate to ground station
-    // @Description: Extra data type 2 stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("EXTRA2",   6, GCS_MAVLINK_Parameters, streamRates[6],  1),
-
-    // @Param: EXTRA3
-    // @DisplayName: Extra data type 3 stream rate to ground station
-    // @Description: Extra data type 3 stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("EXTRA3",   7, GCS_MAVLINK_Parameters, streamRates[7],  1),
-
-    // @Param: PARAMS
-    // @DisplayName: Parameter stream rate to ground station
-    // @Description: Parameter stream rate to ground station
-    // @Units: Hz
-    // @Range: 0 50
-    // @Increment: 1
-    // @RebootRequired: True
-    // @User: Advanced
-    AP_GROUPINFO("PARAMS",   8, GCS_MAVLINK_Parameters, streamRates[8],  10),
-    AP_GROUPEND
-};
-
-static const ap_message STREAM_RAW_SENSORS_msgs[] = {
-    MSG_RAW_IMU,
-    MSG_SCALED_IMU2,
-    MSG_SCALED_IMU3,
-    MSG_SCALED_PRESSURE,
-    MSG_SCALED_PRESSURE2,
-    MSG_SCALED_PRESSURE3,
-#if AP_AIRSPEED_ENABLED
-    MSG_AIRSPEED,
-#endif
-};
-static const ap_message STREAM_EXTENDED_STATUS_msgs[] = {
-    MSG_SYS_STATUS,
-    MSG_POWER_STATUS,
-#if HAL_WITH_MCU_MONITORING
-    MSG_MCU_STATUS,
-#endif
-    MSG_MEMINFO,
-    MSG_NAV_CONTROLLER_OUTPUT,
-#if AP_GPS_GPS_RAW_INT_SENDING_ENABLED
-    MSG_GPS_RAW,
-#endif
-#if AP_GPS_GPS_RTK_SENDING_ENABLED
-    MSG_GPS_RTK,
-#endif
-#if AP_GPS_GPS2_RAW_SENDING_ENABLED
-    MSG_GPS2_RAW,
-#endif
-#if AP_GPS_GPS2_RTK_SENDING_ENABLED
-    MSG_GPS2_RTK,
-#endif
-};
-static const ap_message STREAM_POSITION_msgs[] = {
-    MSG_LOCATION,
-    MSG_LOCAL_POSITION
-};
-static const ap_message STREAM_RAW_CONTROLLER_msgs[] = {
-    MSG_SERVO_OUTPUT_RAW,
-};
-static const ap_message STREAM_RC_CHANNELS_msgs[] = {
-    MSG_RC_CHANNELS,
-#if AP_MAVLINK_MSG_RC_CHANNELS_RAW_ENABLED
-    MSG_RC_CHANNELS_RAW, // only sent on a mavlink1 connection
-#endif
-};
-static const ap_message STREAM_EXTRA1_msgs[] = {
-    MSG_ATTITUDE,
-    MSG_PID_TUNING,
-};
-static const ap_message STREAM_EXTRA3_msgs[] = {
-    MSG_AHRS,
-#if AP_SIM_ENABLED
-    MSG_SIMSTATE,
-#endif
-    MSG_SYSTEM_TIME,
-    MSG_AHRS2,
-#if COMPASS_CAL_ENABLED
-    MSG_MAG_CAL_REPORT,
-    MSG_MAG_CAL_PROGRESS,
-#endif
-    MSG_EKF_STATUS_REPORT,
-    MSG_BATTERY_STATUS,
-};
-static const ap_message STREAM_PARAMS_msgs[] = {
-    MSG_NEXT_PARAM,
-    MSG_AVAILABLE_MODES
-};
-
-const struct GCS_MAVLINK::stream_entries GCS_MAVLINK::all_stream_entries[] = {
-    MAV_STREAM_ENTRY(STREAM_RAW_SENSORS),
-    MAV_STREAM_ENTRY(STREAM_EXTENDED_STATUS),
-    MAV_STREAM_ENTRY(STREAM_POSITION),
-    MAV_STREAM_ENTRY(STREAM_RAW_CONTROLLER),
-    MAV_STREAM_ENTRY(STREAM_RC_CHANNELS),
-    MAV_STREAM_ENTRY(STREAM_EXTRA1),
-    MAV_STREAM_ENTRY(STREAM_EXTRA3),
-    MAV_STREAM_ENTRY(STREAM_PARAMS),
-    MAV_STREAM_TERMINATOR // must have this at end of stream_entries
-};
-
-/*
   We eavesdrop on MAVLINK_MSG_ID_GLOBAL_POSITION_INT and
   MAVLINK_MSG_ID_SCALED_PRESSUREs
 */
@@ -378,6 +287,17 @@ void GCS_MAVLINK_Tracker::packetReceived(const mavlink_status_t &status,
     GCS_MAVLINK::packetReceived(status, msg);
 }
 
+bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
+{
+    switch(id) {
+    case MSG_WIND: // other vehicles do something custom with wind:
+        return true;
+    default:
+        return GCS_MAVLINK::try_send_message(id);
+    }
+    return true;
+}
+
 // locks onto a particular target sysid and sets it's position data stream to at least 1hz
 void GCS_MAVLINK_Tracker::mavlink_check_target(const mavlink_message_t &msg)
 {
@@ -410,11 +330,6 @@ void GCS_MAVLINK_Tracker::mavlink_check_target(const mavlink_message_t &msg)
 
     // flag target has been set
     tracker.target_set = true;
-}
-
-uint8_t GCS_MAVLINK_Tracker::sysid_my_gcs() const
-{
-    return tracker.g.sysid_my_gcs;
 }
 
 MAV_RESULT GCS_MAVLINK_Tracker::_handle_command_preflight_calibration_baro(const mavlink_message_t &msg)
@@ -541,8 +456,8 @@ void GCS_MAVLINK_Tracker::handle_message_mission_item(const mavlink_message_t &m
         case MAV_FRAME_LOCAL_NED:                         // local (relative to home position)
         {
             tell_command = Location{
-                int32_t(1.0e7f*ToDeg(packet.x/(RADIUS_OF_EARTH*cosf(ToRad(home.lat/1.0e7f)))) + home.lat),
-                int32_t(1.0e7f*ToDeg(packet.y/RADIUS_OF_EARTH) + home.lng),
+                int32_t(1.0e7f*degrees(packet.x/(RADIUS_OF_EARTH*cosf(radians(home.lat/1.0e7f)))) + home.lat),
+                int32_t(1.0e7f*degrees(packet.y/RADIUS_OF_EARTH) + home.lng),
                 int32_t(-packet.z*1.0e2f),
                 Location::AltFrame::ABOVE_HOME
             };
@@ -554,8 +469,8 @@ void GCS_MAVLINK_Tracker::handle_message_mission_item(const mavlink_message_t &m
         case MAV_FRAME_LOCAL:                         // local (relative to home position)
         {
             tell_command = {
-                int32_t(1.0e7f*ToDeg(packet.x/(RADIUS_OF_EARTH*cosf(ToRad(home.lat/1.0e7f)))) + home.lat),
-                int32_t(1.0e7f*ToDeg(packet.y/RADIUS_OF_EARTH) + home.lng),
+                int32_t(1.0e7f*degrees(packet.x/(RADIUS_OF_EARTH*cosf(radians(home.lat/1.0e7f)))) + home.lat),
+                int32_t(1.0e7f*degrees(packet.y/RADIUS_OF_EARTH) + home.lng),
                 int32_t(packet.z*1.0e2f),
                 Location::AltFrame::ABOVE_HOME
             };
@@ -643,7 +558,7 @@ void GCS_MAVLINK_Tracker::send_global_position_int()
         AP_HAL::millis(),
         tracker.current_loc.lat,  // in 1E7 degrees
         tracker.current_loc.lng,  // in 1E7 degrees
-        tracker.current_loc.alt,  // millimeters above ground/sea level
+        tracker.current_loc.alt * 10,  // millimeters above ground/sea level
         0,                        // millimeters above home
         0,                        // X speed cm/s (+ve North)
         0,                        // Y speed cm/s (+ve East)

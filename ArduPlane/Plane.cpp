@@ -66,7 +66,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     FAST_TASK(stabilize),
     FAST_TASK(set_servos),
     SCHED_TASK(read_radio,             50,    100,   6),
-    SCHED_TASK(check_short_failsafe,   50,    100,   9),
+    SCHED_TASK(check_short_rc_failsafe,   50,    100,   9),
     SCHED_TASK(update_speed_height,    50,    200,  12),
     SCHED_TASK(update_throttle_hover, 100,     90,  24),
     SCHED_TASK_CLASS(RC_Channels,     (RC_Channels*)&plane.g2.rc_channels, read_mode_switch,           7,    100, 27),
@@ -99,9 +99,6 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(one_second_loop,         1,    400,  90),
     SCHED_TASK(three_hz_loop,           3,     75,  93),
     SCHED_TASK(check_long_failsafe,     3,    400,  96),
-#if AP_RPM_ENABLED
-    SCHED_TASK_CLASS(AP_RPM,           &plane.rpm_sensor,     update,     10, 100,  99),
-#endif
 #if AP_AIRSPEED_AUTOCAL_ENABLE
     SCHED_TASK(airspeed_ratio_update,   1,    100,  102),
 #endif // AP_AIRSPEED_AUTOCAL_ENABLE
@@ -114,7 +111,6 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
 #if HAL_LOGGING_ENABLED
     SCHED_TASK_CLASS(AP_Scheduler, &plane.scheduler, update_logging,         0.2,    100, 111),
 #endif
-    SCHED_TASK(compass_save,          0.1,    200, 114),
 #if HAL_LOGGING_ENABLED
     SCHED_TASK(Log_Write_FullRate,        400,    300, 117),
     SCHED_TASK(update_logging10,        10,    300, 120),
@@ -132,9 +128,9 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_Logger,         &plane.logger, periodic_tasks, 50, 400, 138),
 #endif
     SCHED_TASK_CLASS(AP_InertialSensor, &plane.ins,    periodic,       50,  50, 141),
-#if HAL_ADSB_ENABLED
+#if HAL_ADSB_ENABLED || AP_ADSB_AVOIDANCE_ENABLED
     SCHED_TASK(avoidance_adsb_update,  10,    100, 144),
-#endif
+#endif  // HAL_ADSB_ENABLED || AP_ADSB_AVOIDANCE_ENABLED
     SCHED_TASK_CLASS(RC_Channels,       (RC_Channels*)&plane.g2.rc_channels, read_aux_all,           10,    200, 147),
 #if HAL_BUTTON_ENABLED
     SCHED_TASK_CLASS(AP_Button, &plane.button, update, 5, 100, 150),
@@ -205,6 +201,12 @@ void Plane::ahrs_update()
 
     // update inertial_nav for quadplane
     quadplane.inertial_nav.update();
+    if (quadplane.available()) {  
+        quadplane.pos_control->update_estimates();  
+    }
+#endif
+#if AP_SCRIPTING_ENABLED && AP_FOLLOW_ENABLED
+        g2.follow.update_estimates();
 #endif
 
 #if HAL_LOGGING_ENABLED
@@ -314,6 +316,10 @@ void Plane::update_logging25(void)
 
     if (should_log(MASK_LOG_IMU))
         AP::ins().Write_Vibration();
+
+#if AP_PLANE_BLACKBOX_LOGGING
+    Log_Write_Blackbox();
+#endif
 }
 #endif  // HAL_LOGGING_ENABLED
 
@@ -352,9 +358,6 @@ void Plane::one_second_loop()
                                   (float)((aparm.airspeed_max - aparm.airspeed_min)/2));
     }
 
-    // sync MAVLink system ID
-    mavlink_system.sysid = g.sysid_this_mav;
-
     AP::srv().enable_aux_servos();
 
     // update notify flags
@@ -380,13 +383,6 @@ void Plane::one_second_loop()
             landing.alt_offset = 0;
     }
 
-    // this ensures G_Dt is correct, catching startup issues with constructors
-    // calling the scheduler methods
-    if (!is_equal(1.0f/scheduler.get_loop_rate_hz(), scheduler.get_loop_period_s()) ||
-        !is_equal(G_Dt, scheduler.get_loop_period_s())) {
-        INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
-    }
-
     const float loop_rate = AP::scheduler().get_filtered_loop_rate_hz();
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.available()) {
@@ -405,25 +401,16 @@ void Plane::three_hz_loop()
 #endif
 }
 
-void Plane::compass_save()
-{
-    if (AP::compass().available() &&
-        compass.get_learn_type() >= Compass::LEARN_INTERNAL &&
-        !hal.util->get_soft_armed()) {
-        /*
-          only save offsets when disarmed
-         */
-        compass.save_offsets();
-    }
-}
-
 #if AP_AIRSPEED_AUTOCAL_ENABLE
 /*
   once a second update the airspeed calibration ratio
  */
 void Plane::airspeed_ratio_update(void)
 {
-    if (!airspeed.enabled() ||
+    if (!hal.util->get_soft_armed() ||
+        !ahrs.get_fly_forward() ||
+        !is_flying() ||
+        !airspeed.enabled() ||
         gps.status() < AP_GPS::GPS_OK_FIX_3D ||
         gps.ground_speed() < 4) {
         // don't calibrate when not moving
@@ -438,8 +425,8 @@ void Plane::airspeed_ratio_update(void)
         return;
     }
     if (labs(ahrs.roll_sensor) > roll_limit_cd ||
-        ahrs.pitch_sensor > aparm.pitch_limit_max*100 ||
-        ahrs.pitch_sensor < pitch_limit_min*100) {
+        ahrs.get_pitch_deg() > aparm.pitch_limit_max ||
+        ahrs.get_pitch_deg() < pitch_limit_min) {
         // don't calibrate when going beyond normal flight envelope
         return;
     }
@@ -514,6 +501,10 @@ void Plane::update_control_mode(void)
     update_fly_forward();
 
     control_mode->update();
+
+#if MODE_AUTOLAND_ENABLED
+    mode_autoland.check_takeoff_direction();
+#endif
 }
 
 
@@ -564,7 +555,23 @@ void Plane::set_flight_stage(AP_FixedWing::FlightStage fs)
         return;
     }
 
-    landing.handle_flight_stage_change(fs == AP_FixedWing::FlightStage::LAND);
+    const bool is_landing = (fs == AP_FixedWing::FlightStage::LAND);
+
+    landing.handle_flight_stage_change(is_landing);
+
+#if AP_LANDINGGEAR_ENABLED
+    if (is_landing) {
+        plane.g2.landing_gear.deploy_for_landing();
+    }
+
+    const bool is_takeoff_complete = (flight_stage == AP_FixedWing::FlightStage::TAKEOFF &&
+                                      fs == AP_FixedWing::FlightStage::NORMAL);
+    if (is_takeoff_complete &&
+        arming.is_armed_and_safety_off() &&
+        is_flying()) {
+            g2.landing_gear.retract_after_takeoff();
+    }
+#endif
 
     if (fs == AP_FixedWing::FlightStage::ABORT_LANDING) {
         gcs().send_text(MAV_SEVERITY_NOTICE, "Landing aborted, climbing to %dm",
@@ -830,7 +837,7 @@ bool Plane::get_wp_distance_m(float &distance) const
     }
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.in_vtol_mode()) {
-        distance = quadplane.using_wp_nav() ? quadplane.wp_nav->get_wp_distance_to_destination() * 0.01 : 0;
+        distance = quadplane.using_wp_nav() ? quadplane.wp_nav->get_wp_distance_to_destination_m() : 0;
         return true;
     }
 #endif
@@ -846,7 +853,7 @@ bool Plane::get_wp_bearing_deg(float &bearing) const
     }
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.in_vtol_mode()) {
-        bearing = quadplane.using_wp_nav() ? quadplane.wp_nav->get_wp_bearing_to_destination() : 0;
+        bearing = quadplane.using_wp_nav() ? quadplane.wp_nav->get_wp_bearing_to_destination_cd() : 0;
         return true;
     }
 #endif
@@ -862,7 +869,7 @@ bool Plane::get_wp_crosstrack_error_m(float &xtrack_error) const
     }
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.in_vtol_mode()) {
-        xtrack_error = quadplane.using_wp_nav() ? quadplane.wp_nav->crosstrack_error() : 0;
+        xtrack_error = quadplane.using_wp_nav() ? quadplane.wp_nav->crosstrack_error_m() : 0;
         return true;
     }
 #endif
@@ -875,15 +882,15 @@ bool Plane::get_wp_crosstrack_error_m(float &xtrack_error) const
 bool Plane::set_target_location(const Location &target_loc)
 {
     Location loc{target_loc};
+    fix_terrain_WP(loc, __LINE__);
 
     if (plane.control_mode != &plane.mode_guided) {
         // only accept position updates when in GUIDED mode
         return false;
     }
     // add home alt if needed
-    if (loc.relative_alt) {
-        loc.alt += plane.home.alt;
-        loc.relative_alt = 0;
+    if (!loc.terrain_alt) {
+        loc.change_alt_frame(Location::AltFrame::ABSOLUTE);
     }
     plane.set_guided_WP(loc);
     return true;
@@ -931,6 +938,8 @@ bool Plane::update_target_location(const Location &old_loc, const Location &new_
     }
     next_WP_loc = new_loc;
 
+    fix_terrain_WP(next_WP_loc, __LINE__);
+
 #if HAL_QUADPLANE_ENABLED
     if (control_mode == &mode_qland || control_mode == &mode_qloiter) {
         mode_qloiter.last_target_loc_set_ms = AP_HAL::millis();
@@ -941,11 +950,11 @@ bool Plane::update_target_location(const Location &old_loc, const Location &new_
 }
 
 // allow for velocity matching in VTOL
-bool Plane::set_velocity_match(const Vector2f &velocity)
+bool Plane::set_velocity_match(const Vector2f &velocity_ne_ms)
 {
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.in_vtol_mode() || quadplane.in_vtol_land_sequence()) {
-        quadplane.poscontrol.velocity_match = velocity;
+        quadplane.poscontrol.velocity_match_ms = velocity_ne_ms;
         quadplane.poscontrol.last_velocity_match_ms = AP_HAL::millis();
         return true;
     }
@@ -954,12 +963,12 @@ bool Plane::set_velocity_match(const Vector2f &velocity)
 }
 
 // allow for override of land descent rate
-bool Plane::set_land_descent_rate(float descent_rate)
+bool Plane::set_land_descent_rate(float descent_rate_ms)
 {
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.in_vtol_land_descent() ||
         control_mode == &mode_qland) {
-        quadplane.poscontrol.override_descent_rate = descent_rate;
+        quadplane.poscontrol.override_descent_rate_ms = descent_rate_ms;
         quadplane.poscontrol.last_override_descent_ms = AP_HAL::millis();
         return true;
     }
@@ -1000,6 +1009,12 @@ bool Plane::is_taking_off() const
     return control_mode->is_taking_off();
 }
 
+#if HAL_QUADPLANE_ENABLED
+bool Plane::start_takeoff(const float alt_m) {
+    return plane.quadplane.available() && quadplane.do_user_takeoff(alt_m);
+}
+#endif
+
 // correct AHRS pitch for PTCH_TRIM_DEG in non-VTOL modes, and return VTOL view in VTOL
 void Plane::get_osd_roll_pitch_rad(float &roll, float &pitch) const
 {
@@ -1010,8 +1025,8 @@ void Plane::get_osd_roll_pitch_rad(float &roll, float &pitch) const
         return;
     }
 #endif
-    pitch = ahrs.get_pitch();
-    roll = ahrs.get_roll();
+    pitch = ahrs.get_pitch_rad();
+    roll = ahrs.get_roll_rad();
     if (!(flight_option_enabled(FlightOptions::OSD_REMOVE_TRIM_PITCH))) {  // correct for PTCH_TRIM_DEG
         pitch -= g.pitch_trim * DEG_TO_RAD;
     }

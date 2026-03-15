@@ -284,7 +284,7 @@ ACRO_ROLL_RATE = Parameter("ACRO_ROLL_RATE")
 ACRO_YAW_RATE = Parameter('ACRO_YAW_RATE')
 AIRSPEED_MIN = Parameter("AIRSPEED_MIN")
 SCALING_SPEED = Parameter("SCALING_SPEED")
-SYSID_THISMAV = Parameter("SYSID_THISMAV")
+MAV_SYSID = Parameter("MAV_SYSID")
 
 GRAVITY_MSS = 9.80665
 
@@ -1703,7 +1703,7 @@ function rudder_over(direction, min_speed)
 
       -- use user set throttle for achieving the stall
       local throttle = AEROM_STALL_THR:get()
-      local pitch_deg = math.deg(ahrs:get_pitch())
+      local pitch_deg = math.deg(ahrs:get_pitch_rad())
       if reached_speed and not kick_started and math.abs(math.deg(ahrs_gyro:z())) > ACRO_YAW_RATE:get()/3 then
          kick_started = true
       end
@@ -1824,7 +1824,7 @@ function takeoff_controller(distance, thr_slew)
    local start_time = 0
    local start_pos = nil
    local all_done = false
-   local initial_yaw_deg = math.deg(ahrs:get_yaw())
+   local initial_yaw_deg = math.deg(ahrs:get_yaw_rad())
    local yaw_correction_tconst = 1.0
    gcs:send_text(MAV_SEVERITY.INFO,string.format("Takeoff init"))
 
@@ -1845,7 +1845,7 @@ function takeoff_controller(distance, thr_slew)
       end
       local throttle = constrain(thr_slew * (now - start_time), 0, 100)
 
-      local yaw_deg = math.deg(ahrs:get_yaw())
+      local yaw_deg = math.deg(ahrs:get_yaw_rad())
       local yaw_err_deg = wrap_180(yaw_deg - initial_yaw_deg)
       local targ_yaw_rate = -yaw_err_deg / yaw_correction_tconst
 
@@ -2162,7 +2162,7 @@ function log_position(logname, loc, quat)
                 'BHILLffff',
                 '#--DU----',
                 '---GG----',
-                SYSID_THISMAV:get(),
+                MAV_SYSID:get(),
                 gps_week,
                 gps_week_ms,
                 loc:lat(),
@@ -2309,8 +2309,8 @@ local function mavlink_receiver()
 
    msg_map[NAMED_VALUE_FLOAT_msgid] = "NAMED_VALUE_FLOAT"
 
-   -- initialise mavlink rx with number of messages, and buffer depth
-   mavlink.init(1, 10)
+   -- initialize MAVLink rx with buffer depth and number of rx message IDs to register
+   mavlink.init(10, 1)
 
    -- register message id to receive
    mavlink.register_rx_msgid(NAMED_VALUE_FLOAT_msgid)
@@ -2357,7 +2357,7 @@ function handle_speed_adjustment()
       return
    end
    -- gcs:send_text(MAV_SEVERITY.INFO, string.format("NVF: name='%s' value=%f sysid=%d tbm=%f", name, remote_timestamp, sysid, time_boot_ms))
-   if name == "PATHT" and sysid ~= SYSID_THISMAV:get() then
+   if name == "PATHT" and sysid ~= MAV_SYSID:get() then
       local remote_t = time_boot_ms * 0.001
       local dt = local_t - remote_t
       local rem_patht = current_task.fn:timestamp_to_patht(remote_timestamp)
@@ -2394,7 +2394,7 @@ function do_path()
    local ahrs_pos = ahrs:get_position()
    local ahrs_gyro = ahrs:get_gyro()
    local ahrs_velned = ahrs:get_velocity_NED()
-   local ahrs_airspeed = ahrs:airspeed_estimate()
+   local ahrs_airspeed = ahrs:airspeed_EAS()
    --[[
       ahrs_quat is the quaterion which when used with quat_earth_to_body() rotates a vector
       from earth to body frame. It needs to be the inverse of ahrs:get_quaternion()
@@ -3035,7 +3035,9 @@ function load_trick(id)
    local pc = path_composer(name, paths)
    gcs:send_text(MAV_SEVERITY.INFO, string.format("Loaded trick%u '%s'", id, name))
    command_table[id] = PathFunction(pc, name)
-   logger:log_file_content(filename)
+   if logger.log_file_content then
+      logger:log_file_content(filename)
+   end
 
    calculate_timestamps(command_table[id])
 end

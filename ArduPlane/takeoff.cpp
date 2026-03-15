@@ -39,7 +39,7 @@ bool Plane::auto_takeoff_check(void)
     
     //check if waiting for rudder neutral after rudder arm
     if (plane.arming.last_arm_method() == AP_Arming::Method::RUDDER &&
-        !seen_neutral_rudder) {
+        !rc().seen_neutral_rudder()) {
         // we were armed with rudder but have not seen rudder neutral yet
         takeoff_state.waiting_for_rudder_neutral = true;
         // warn if we have been waiting a long time
@@ -190,7 +190,7 @@ void Plane::takeoff_calc_pitch(void)
 {
     // First see if TKOFF_ROTATE_SPD applies.
     // This will set the pitch for the first portion of the takeoff, up until cruise speed is reached.
-    if (g.takeoff_rotate_speed > 0) {
+    if (!auto_state.rotation_complete && g.takeoff_rotate_speed > 0) {
         // A non-zero rotate speed is recommended for ground takeoffs.
         if (auto_state.highest_airspeed < g.takeoff_rotate_speed) {
             // We have not reached rotate speed, use the specified takeoff target pitch angle.
@@ -209,6 +209,7 @@ void Plane::takeoff_calc_pitch(void)
             return;
         }
     }
+    auto_state.rotation_complete = true;
 
     // We are now past the rotation.
     // Initialize pitch limits for TECS.
@@ -237,7 +238,17 @@ void Plane::takeoff_calc_pitch(void)
         // increase the robustness of hand launches, particularly
         // in cross-winds. If we start to roll over then we reduce
         // pitch demand until the roll recovers
-        float roll_error_rad = radians(constrain_float(labs(nav_roll_cd - ahrs.roll_sensor) * 0.01, 0, 90));
+
+        // Handle target roll for inverted flight with a local variable,
+        // so internal state is still updated once by Plane::stabilize_roll
+        int32_t local_nav_roll_cd = nav_roll_cd;
+        if (fly_inverted()) {
+            local_nav_roll_cd += 18000;
+            if (ahrs.roll_sensor < 0) {
+                local_nav_roll_cd -= 36000;
+            }
+        }
+        float roll_error_rad = cd_to_rad(constrain_float(labs(local_nav_roll_cd - ahrs.roll_sensor), 0, 9000));
         float reduction = sq(cosf(roll_error_rad));
         nav_pitch_cd *= reduction;
 
@@ -285,7 +296,7 @@ void Plane::takeoff_calc_throttle() {
     const float current_baro_alt = barometer.get_altitude();
     const bool below_lvl_alt = current_baro_alt < auto_state.baro_takeoff_alt + mode_takeoff.level_alt;
     // Set the minimum throttle limit.
-    const bool use_throttle_range = (aparm.takeoff_options & (uint32_t)AP_FixedWing::TakeoffOption::THROTTLE_RANGE);
+    const bool use_throttle_range = tkoff_option_is_set(AP_FixedWing::TakeoffOption::THROTTLE_RANGE);
     if (!use_throttle_range // We don't want to employ a throttle range.
         || !ahrs.using_airspeed_sensor() // We don't have an airspeed sensor.
         || below_lvl_alt // We are below TKOFF_LVL_ALT.
@@ -380,7 +391,7 @@ return_zero:
  */
 void Plane::landing_gear_update(void)
 {
-    g2.landing_gear.update(relative_ground_altitude(g.rangefinder_landing));
+    g2.landing_gear.update(relative_ground_altitude(RangeFinderUse::TAKEOFF_LANDING));
 }
 #endif
 

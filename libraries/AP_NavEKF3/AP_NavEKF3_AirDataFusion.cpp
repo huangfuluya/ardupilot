@@ -149,31 +149,18 @@ void NavEKF3_core::FuseAirspeed()
             }
             stateStruct.quat.normalize();
 
-            // correct the covariance P = (I - K*H)*P
-            // take advantage of the empty columns in KH to reduce the
-            // number of operations
+            // correct the covariance P = (I - K*H)*P = P - K*H*P. take advantage of
+            // the zero elements of H to reduce the number of operations.
             for (unsigned i = 0; i<=stateIndexLim; i++) {
-                for (unsigned j = 0; j<=3; j++) {
-                    KH[i][j] = 0.0f;
-                }
-                for (unsigned j = 4; j<=6; j++) {
-                    KH[i][j] = Kfusion[i] * H_TAS[j];
-                }
-                for (unsigned j = 7; j<=21; j++) {
-                    KH[i][j] = 0.0f;
-                }
-                for (unsigned j = 22; j<=23; j++) {
-                    KH[i][j] = Kfusion[i] * H_TAS[j];
-                }
-            }
-            for (unsigned j = 0; j<=stateIndexLim; j++) {
-                for (unsigned i = 0; i<=stateIndexLim; i++) {
+                // j as the inner loop allows the compiler to hoist the KH product
+                // to save computation, and do the inner indexing more efficiently.
+                for (unsigned j = 0; j<=stateIndexLim; j++) {
                     ftype res = 0;
-                    res += KH[i][4] * P[4][j];
-                    res += KH[i][5] * P[5][j];
-                    res += KH[i][6] * P[6][j];
-                    res += KH[i][22] * P[22][j];
-                    res += KH[i][23] * P[23][j];
+                    res += (Kfusion[i] * H_TAS[4]) * P[4][j];
+                    res += (Kfusion[i] * H_TAS[5]) * P[5][j];
+                    res += (Kfusion[i] * H_TAS[6]) * P[6][j];
+                    res += (Kfusion[i] * H_TAS[22]) * P[22][j];
+                    res += (Kfusion[i] * H_TAS[23]) * P[23][j];
                     KHP[i][j] = res;
                 }
             }
@@ -425,32 +412,22 @@ void NavEKF3_core::FuseSideslip()
         }
         stateStruct.quat.normalize();
 
-        // correct the covariance P = (I - K*H)*P
-        // take advantage of the empty columns in KH to reduce the
-        // number of operations
+        // correct the covariance P = (I - K*H)*P = P - K*H*P. take advantage of
+        // the zero elements of H to reduce the number of operations.
         for (unsigned i = 0; i<=stateIndexLim; i++) {
-            for (unsigned j = 0; j<=6; j++) {
-                KH[i][j] = Kfusion[i] * H_BETA[j];
-            }
-            for (unsigned j = 7; j<=21; j++) {
-                KH[i][j] = 0.0f;
-            }
-            for (unsigned j = 22; j<=23; j++) {
-                KH[i][j] = Kfusion[i] * H_BETA[j];
-            }
-        }
-        for (unsigned j = 0; j<=stateIndexLim; j++) {
-            for (unsigned i = 0; i<=stateIndexLim; i++) {
+            // j as the inner loop allows the compiler to hoist the KH product
+            // to save computation, and do the inner indexing more efficiently.
+            for (unsigned j = 0; j<=stateIndexLim; j++) {
                 ftype res = 0;
-                res += KH[i][0] * P[0][j];
-                res += KH[i][1] * P[1][j];
-                res += KH[i][2] * P[2][j];
-                res += KH[i][3] * P[3][j];
-                res += KH[i][4] * P[4][j];
-                res += KH[i][5] * P[5][j];
-                res += KH[i][6] * P[6][j];
-                res += KH[i][22] * P[22][j];
-                res += KH[i][23] * P[23][j];
+                res += (Kfusion[i] * H_BETA[0]) * P[0][j];
+                res += (Kfusion[i] * H_BETA[1]) * P[1][j];
+                res += (Kfusion[i] * H_BETA[2]) * P[2][j];
+                res += (Kfusion[i] * H_BETA[3]) * P[3][j];
+                res += (Kfusion[i] * H_BETA[4]) * P[4][j];
+                res += (Kfusion[i] * H_BETA[5]) * P[5][j];
+                res += (Kfusion[i] * H_BETA[6]) * P[6][j];
+                res += (Kfusion[i] * H_BETA[22]) * P[22][j];
+                res += (Kfusion[i] * H_BETA[23]) * P[23][j];
                 KHP[i][j] = res;
             }
         }
@@ -475,8 +452,8 @@ void NavEKF3_core::FuseSideslip()
 void NavEKF3_core::FuseDragForces()
 {
     // drag model parameters
-    const ftype bcoef_x = frontend->_ballisticCoef_x;
-    const ftype bcoef_y = frontend->_ballisticCoef_y;
+    const ftype bcoef_x = frontend->_ballisticCoef_x.get();
+    const ftype bcoef_y = frontend->_ballisticCoef_y.get();
     const ftype mcoef = frontend->_momentumDragCoef.get();
     const bool using_bcoef_x = bcoef_x > 1.0f;
     const bool using_bcoef_y = bcoef_y > 1.0f;
@@ -700,32 +677,22 @@ void NavEKF3_core::FuseDragForces()
         }
         stateStruct.quat.normalize();
 
-        // correct the covariance P = (I - K*H)*P
-        // take advantage of the empty columns in KH to reduce the
-        // number of operations
+        // correct the covariance P = (I - K*H)*P = P - K*H*P. take advantage of
+        // the zero elements of H to reduce the number of operations.
         for (unsigned i = 0; i<=stateIndexLim; i++) {
-            for (unsigned j = 0; j<=6; j++) {
-                KH[i][j] = Kfusion[i] * Hfusion[j];
-            }
-            for (unsigned j = 7; j<=21; j++) {
-                KH[i][j] = 0.0f;
-            }
-            for (unsigned j = 22; j<=23; j++) {
-                KH[i][j] = Kfusion[i] * Hfusion[j];
-            }
-        }
-        for (unsigned j = 0; j<=stateIndexLim; j++) {
-            for (unsigned i = 0; i<=stateIndexLim; i++) {
+            // j as the inner loop allows the compiler to hoist the KH product
+            // to save computation, and do the inner indexing more efficiently.
+            for (unsigned j = 0; j<=stateIndexLim; j++) {
                 ftype res = 0;
-                res += KH[i][0] * P[0][j];
-                res += KH[i][1] * P[1][j];
-                res += KH[i][2] * P[2][j];
-                res += KH[i][3] * P[3][j];
-                res += KH[i][4] * P[4][j];
-                res += KH[i][5] * P[5][j];
-                res += KH[i][6] * P[6][j];
-                res += KH[i][22] * P[22][j];
-                res += KH[i][23] * P[23][j];
+                res += (Kfusion[i] * Hfusion[0]) * P[0][j];
+                res += (Kfusion[i] * Hfusion[1]) * P[1][j];
+                res += (Kfusion[i] * Hfusion[2]) * P[2][j];
+                res += (Kfusion[i] * Hfusion[3]) * P[3][j];
+                res += (Kfusion[i] * Hfusion[4]) * P[4][j];
+                res += (Kfusion[i] * Hfusion[5]) * P[5][j];
+                res += (Kfusion[i] * Hfusion[6]) * P[6][j];
+                res += (Kfusion[i] * Hfusion[22]) * P[22][j];
+                res += (Kfusion[i] * Hfusion[23]) * P[23][j];
                 KHP[i][j] = res;
             }
         }

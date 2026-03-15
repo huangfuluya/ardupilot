@@ -5,17 +5,18 @@ script to build a html file showing flash free for current builds
 AP_FLAKE8_CLEAN
 '''
 
-import os
 import argparse
 import fnmatch
 import json
+import os
+
 from datetime import datetime
 
 parser = argparse.ArgumentParser(description='create builds.html for list of builds')
 parser.add_argument('basedir', default=None, help='base directory (binaries directory)')
 parser.add_argument('--outfile', default="builds.html", help='output file')
 
-build_dirs = ['latest', 'beta', 'beta-4.3', 'stable']
+build_dirs = ['latest', 'beta', 'stable']
 builds = ['Plane', 'Copter', 'Rover', 'Sub', 'Blimp', 'AntennaTracker', 'AP_Periph']
 
 args = parser.parse_args()
@@ -108,7 +109,6 @@ a {
 <ul>
 <li>Jump to <a href='#latest'>latest</a></li>
 <li>Jump to <a href='#beta'>beta</a></li>
-<li>Jump to <a href='#beta-4.3'>beta-4.3</a></li>
 <li>Jump to <a href='#stable'>stable</a></li>
 </ul>
 ''' % datetime.now().strftime("%F %k:%M"))

@@ -34,25 +34,6 @@
 #include <SITL/SITL.h>
 #endif
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-  #define RELAY1_PIN_DEFAULT 13
-
-#elif CONFIG_HAL_BOARD == HAL_BOARD_LINUX
-  #if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BLUE
-    #define RELAY1_PIN_DEFAULT 57
-    #define RELAY2_PIN_DEFAULT 49
-    #define RELAY3_PIN_DEFAULT 116
-    #define RELAY4_PIN_DEFAULT 113
-  #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BBBMINI
-    #define RELAY1_PIN_DEFAULT 27
-    #define RELAY2_PIN_DEFAULT 65
-    #define RELAY3_PIN_DEFAULT 22
-    #define RELAY4_PIN_DEFAULT 81
-    #define RELAY5_PIN_DEFAULT 23
-    #define RELAY6_PIN_DEFAULT 26
-  #endif
-#endif
-
 #ifndef RELAY1_PIN_DEFAULT
   #define RELAY1_PIN_DEFAULT -1
 #endif
@@ -243,7 +224,7 @@ void AP_Relay::convert_params()
 #endif
 
     // Find old default param
-    int8_t default_state = 0; // off was the old behaviour
+    AP_Relay_Params::DefaultState default_state = AP_Relay_Params::DefaultState::OFF; // off was the old behaviour
     const bool have_default = AP_Param::get_param_by_index(this, 4, AP_PARAM_INT8, &default_state);
 
     // grab the old values if they were set
@@ -300,7 +281,7 @@ void AP_Relay::convert_params()
             new_fun = AP_Relay_Params::FUNCTION::RELAY;
 
         }
-        _params[i].function.set_and_save(int8_t(new_fun));
+        _params[i].function.set_and_save(new_fun);
 
 
         // Set the default state
@@ -363,12 +344,11 @@ void AP_Relay::init()
             if ((default_state == AP_Relay_Params::DefaultState::OFF) ||
                 (default_state == AP_Relay_Params::DefaultState::ON)) {
 
-                set_pin_by_instance(instance, (bool)default_state);
+                set_instance_state(instance, (bool)default_state);
             }
         } else {
             // all functions are supposed to be off by default
-            // this will need revisiting when we support inversion
-            set_pin_by_instance(instance, false);
+            set_instance_state(instance, false);
         }
 
         // Make sure any DroneCAN pin is enabled for streaming
@@ -390,13 +370,13 @@ void AP_Relay::set(const AP_Relay_Params::FUNCTION function, const bool value) {
             continue;
         }
 
-        set_pin_by_instance(instance, value);
+        set_instance_state(instance, value);
     }
 }
 
 // set a pins output state by instance and log if required
 // this is an internal helper, instance must have already been validated to be in range
-void AP_Relay::set_pin_by_instance(uint8_t instance, bool value)
+void AP_Relay::set_instance_state(uint8_t instance, bool value)
 {
     const int16_t pin = _params[instance].pin;
     if (pin == -1) {
@@ -410,20 +390,30 @@ void AP_Relay::set_pin_by_instance(uint8_t instance, bool value)
     }
 #endif
 
-    const bool initial_value = get_pin(pin);
+    const bool initial_value = get_pin_state(pin);
 
     if (_params[instance].inverted > 0) {
         value = !value;
     }
 
     if (initial_value != value) {
-        set_pin(pin, value);
+        set_pin_state(pin, value);
 #if HAL_LOGGING_ENABLED
-        AP::logger().Write("RELY", "TimeUS,Instance,State", "s#-", "F--", "QBB",
-                            AP_HAL::micros64(),
-                            instance,
-                            value);
-#endif
+// @LoggerMessage: RELY
+// @Description: Relay state
+// @Field: TimeUS: Time since system startup
+// @Field: Instance: relay instance number
+// @Field: State: current state
+        AP::logger().Write(
+            "RELY",
+            "TimeUS," "Instance," "State",
+            "s"       "#"         "-",
+            "F"       "-"         "-",
+            "Q"       "B"         "B",
+            AP_HAL::micros64(),
+            instance,
+            value);
+#endif  // HAL_LOGGING_ENABLED
     }
 }
 
@@ -437,7 +427,7 @@ void AP_Relay::set(const uint8_t instance, const bool value)
         return;
     }
 
-    set_pin_by_instance(instance, value);
+    set_instance_state(instance, value);
 }
 
 void AP_Relay::toggle(uint8_t instance)
@@ -505,14 +495,14 @@ bool AP_Relay::get(uint8_t instance) const
     }
 
     if (_params[instance].inverted > 0) {
-        return !get_pin(_params[instance].pin.get());
+        return !get_pin_state(_params[instance].pin.get());
     }
 
-    return get_pin(_params[instance].pin.get());
+    return get_pin_state(_params[instance].pin.get());
 }
 
 // Get relay state from pin number
-bool AP_Relay::get_pin(const int16_t pin) const
+bool AP_Relay::get_pin_state(const int16_t pin) const
 {
     if (pin < 0) {
         // invalid pin
@@ -522,7 +512,7 @@ bool AP_Relay::get_pin(const int16_t pin) const
 #if AP_RELAY_DRONECAN_ENABLED
     if (dronecan.valid_pin(pin)) {
         // Virtual DroneCAN pin
-        return dronecan.get_pin(pin);
+        return dronecan.get_pin_state(pin);
     }
 #endif
 
@@ -532,7 +522,7 @@ bool AP_Relay::get_pin(const int16_t pin) const
 }
 
 // Set relay state from pin number
-void AP_Relay::set_pin(const int16_t pin, const bool value)
+void AP_Relay::set_pin_state(const int16_t pin, const bool value)
 {
     if (pin < 0) {
         // invalid pin
@@ -542,7 +532,7 @@ void AP_Relay::set_pin(const int16_t pin, const bool value)
 #if AP_RELAY_DRONECAN_ENABLED
     if (dronecan.valid_pin(pin)) {
         // Virtual DroneCAN pin
-        dronecan.set_pin(pin, value);
+        dronecan.set_pin_state(pin, value);
         return;
     }
 #endif
@@ -552,6 +542,15 @@ void AP_Relay::set_pin(const int16_t pin, const bool value)
     hal.gpio->write(pin, value);
 }
 
+// Get GPIO pin from instance
+bool AP_Relay::get_pin_by_instance(uint8_t instance, uint8_t &pin) const
+{
+    if (instance >= ARRAY_SIZE(_params)) {
+        return false;
+    }
+    pin = _params[instance].pin;
+    return true;
+}
 // see if the relay is enabled
 bool AP_Relay::enabled(uint8_t instance) const 
 {
@@ -600,7 +599,7 @@ uint8_t AP_Relay::DroneCAN::hardpoint_index(const int16_t pin) const
 }
 
 // Set DroneCAN relay state from pin number
-void AP_Relay::DroneCAN::set_pin(const int16_t pin, const bool value)
+void AP_Relay::DroneCAN::set_pin_state(const int16_t pin, const bool value)
 {
     const uint8_t index = hardpoint_index(pin);
 
@@ -626,7 +625,7 @@ void AP_Relay::DroneCAN::set_pin(const int16_t pin, const bool value)
 }
 
 // Get relay state from pin number, this relies on a cached value, assume remote pin is in sync
-bool AP_Relay::DroneCAN::get_pin(const int16_t pin) const
+bool AP_Relay::DroneCAN::get_pin_state(const int16_t pin) const
 {
     const uint8_t index = hardpoint_index(pin);
     return state[index].value;

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 This script intend to provide a pretty size diff between two binaries.
@@ -7,7 +7,9 @@ AP_FLAKE8_CLEAN
 '''
 
 import os
+
 from argparse import ArgumentParser
+
 from tabulate import tabulate
 
 parser = ArgumentParser(description="Print binary size difference with master.")

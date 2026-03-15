@@ -117,6 +117,8 @@ const struct MultiplierStructure log_Multipliers[] = {
 #define LOG_PACKET_HEADER	       uint8_t head1, head2, msgid;
 #define LOG_PACKET_HEADER_INIT(id) head1 : HEAD_BYTE1, head2 : HEAD_BYTE2, msgid : id
 #define LOG_PACKET_HEADER_LEN 3 // bytes required for LOG_PACKET_HEADER
+// bytes required for a max-length packet, including header; stored in uint8_t
+#define LOG_PACKET_MAX_LEN (UINT8_MAX)
 
 // once the logging code is all converted we will remove these from
 // this header
@@ -150,6 +152,8 @@ const struct MultiplierStructure log_Multipliers[] = {
 #include <AP_HAL/LogStructure.h>
 #include <AP_Mission/LogStructure.h>
 #include <AP_Servo_Telem/LogStructure.h>
+
+#include <AP_RTC/AP_RTC_config.h>
 
 // structure used to define logging format
 // It is packed on ChibiOS to save flash space; however, this causes problems
@@ -244,9 +248,11 @@ struct PACKED log_Error {
 };
 
 
-struct PACKED log_Message {
+struct PACKED log_MSG {
     LOG_PACKET_HEADER;
     uint64_t time_us;
+    uint8_t id;
+    uint8_t chunk_seq;
     char msg[64];
 };
 
@@ -316,6 +322,7 @@ struct PACKED log_MAV {
     uint8_t flags;
     uint16_t stream_slowdown_ms;
     uint16_t times_full;
+    uint32_t GCS_SYSID_last_seen_ms;
 };
 
 struct PACKED log_RSSI {
@@ -449,6 +456,25 @@ struct PACKED log_Mode {
     uint8_t mode_reason;
 };
 
+#if AP_RTC_LOGGING_ENABLED
+// @LoggerMessage: RTC
+// @Description: RTC (Unix time) information
+// @Field: TimeUS: Time since system startup
+// @Field: Epoch: current unix epoch time*1000000 (ie. microseconds since Jan 1 1970)
+// @Field: SourceType: source of RTC data
+// @FieldValueEnum: SourceType: AP_RTC::source_type
+struct PACKED log_RTC {
+    LOG_PACKET_HEADER;
+    uint64_t time_us;
+    uint64_t epoch_us;
+    uint8_t  source_type;
+};
+#define LOG_RTC_MESSAGE \
+    { LOG_RTC_MSG, sizeof(log_RTC), "RTC", "QQB", "TimeUS,Epoch,SourceType", "ss-", "FF-" },
+#else
+#define LOG_RTC_MESSAGE
+#endif  // AP_RTC_LOGGING_ENABLED
+
 /*
   rangefinder - support for 4 sensors
  */
@@ -456,7 +482,7 @@ struct PACKED log_RFND {
     LOG_PACKET_HEADER;
     uint64_t time_us;
     uint8_t instance;
-    uint16_t dist;
+    float dist;
     uint8_t status;
     uint8_t orient;
     int8_t quality;
@@ -495,7 +521,7 @@ struct PACKED log_ARSP {
     uint8_t primary;
 };
 
-struct PACKED log_MAV_Stats {
+struct PACKED log_DMS {
     LOG_PACKET_HEADER;
     uint64_t timestamp;
     uint32_t seqno;
@@ -636,6 +662,8 @@ struct PACKED log_VER {
     uint16_t _APJ_BOARD_ID;
     uint8_t build_type;
     uint8_t filter_version;
+    uint32_t iomcu_mcu_id;
+    uint32_t iomcu_cpu_id;
 };
 
 
@@ -665,7 +693,7 @@ struct PACKED log_VER {
 // @Field: TimeUS: Time since system startup
 // @Field: ArmState: true if vehicle is now armed
 // @Field: ArmChecks: arming bitmask at time of arming
-// @FieldBitmaskEnum: ArmChecks: AP_Arming::ArmingChecks
+// @FieldBitmaskEnum: ArmChecks: AP_Arming::Check
 // @Field: Forced: true if arm/disarm was forced
 // @Field: Method: method used for arming
 // @FieldValueEnum: Method: AP_Arming::Method
@@ -683,7 +711,7 @@ struct PACKED log_VER {
 // @Field: H: True if sensor is healthy
 // @Field: Hp: Probability sensor is healthy
 // @Field: TR: innovation test ratio
-// @Field: Pri: True if sensor is the primary sensor
+// @Field: Pri: Primary instance number. If equal to I then this sensor is primary sensor
 
 // @LoggerMessage: DMS
 // @Description: DataFlash-Over-MAVLink statistics
@@ -776,6 +804,7 @@ struct PACKED log_VER {
 // @FieldBitmaskEnum: flags: GCS_MAVLINK::Flags
 // @Field: ss: stream slowdown is the number of ms being added to each message to fit within bandwidth
 // @Field: tf: times buffer was full when a message was going to be sent
+// @Field: mgs: time MAV_GCS_SYSID heartbeat (or manual control) last seen
 
 // @LoggerMessage: MAVC
 // @Description: MAVLink command we have just executed
@@ -807,6 +836,8 @@ struct PACKED log_VER {
 // @LoggerMessage: MSG
 // @Description: Textual messages
 // @Field: TimeUS: Time since system startup
+// @Field: ID: identifier for chunks making up a message
+// @Field: Seq: chunk sequence number within message identified by ID
 // @Field: Message: message text
 
 // @LoggerMessage: MULT
@@ -868,9 +899,9 @@ struct PACKED log_VER {
 // @Field: MaxT: Maximum loop time
 // @Field: Mem: Free memory available
 // @Field: Load: System processor load
+// @Field: ErrL: Internal error line number; last line number on which a internal error was detected
 // @Field: InE: Internal error mask; which internal errors have been detected
 // @FieldBitmaskEnum: InE: AP_InternalError::error_t
-// @Field: ErrL: Internal error line number; last line number on which a internal error was detected
 // @Field: ErC: Internal error count; how many internal errors have been detected
 // @Field: SPIC: Number of SPI transactions processed
 // @Field: I2CC: Number of i2c transactions processed
@@ -1122,6 +1153,8 @@ struct PACKED log_VER {
 // @Field: BU: Build vehicle type
 // @FieldValueEnum: BU: APM_BUILD
 // @Field: FV: Filter version
+// @Field: IMI: IOMCU MCU ID
+// @Field: ICI: IOMCU CPU ID
 
 // @LoggerMessage: MOTB
 // @Description: Motor mixer information
@@ -1146,8 +1179,8 @@ struct PACKED log_VER {
     { LOG_PARAMETER_MSG, sizeof(log_Parameter), \
      "PARM", "QNff",        "TimeUS,Name,Value,Default", "s---", "F---"  },       \
 LOG_STRUCTURE_FROM_GPS \
-    { LOG_MESSAGE_MSG, sizeof(log_Message), \
-      "MSG",  "QZ",     "TimeUS,Message", "s-", "F-"}, \
+    { LOG_MSG_MSG, sizeof(log_MSG), \
+      "MSG",  "QBBZ",     "TimeUS,ID,Seq,Message", "s---", "F---"}, \
     { LOG_RCIN_MSG, sizeof(log_RCIN), \
       "RCIN",  "QHHHHHHHHHHHHHH",     "TimeUS,C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,C11,C12,C13,C14", "sYYYYYYYYYYYYYY", "F--------------", true }, \
     { LOG_RCI2_MSG, sizeof(log_RCI2), \
@@ -1180,9 +1213,10 @@ LOG_STRUCTURE_FROM_MOUNT \
       "MAG", "QBhhhhhhhhhBI",    "TimeUS,I,MagX,MagY,MagZ,OfsX,OfsY,OfsZ,MOX,MOY,MOZ,Health,S", "s#GGGGGGGGG-s", "F-CCCCCCCCC-F", true }, \
     { LOG_MODE_MSG, sizeof(log_Mode), \
       "MODE", "QMBB",         "TimeUS,Mode,ModeNum,Rsn", "s---", "F---" }, \
+LOG_RTC_MESSAGE \
     { LOG_RFND_MSG, sizeof(log_RFND), \
-      "RFND", "QBCBBb", "TimeUS,Instance,Dist,Stat,Orient,Quality", "s#m--%", "F-B---", true }, \
-    { LOG_MAV_STATS, sizeof(log_MAV_Stats), \
+      "RFND", "QBfBBb", "TimeUS,Instance,Dist,Stat,Orient,Quality", "s#m--%", "F-0---", true }, \
+    { LOG_DMS_MSG, sizeof(log_DMS), \
       "DMS", "QIIIIBBBBBBBBB",         "TimeUS,N,Dp,RT,RS,Fa,Fmn,Fmx,Pa,Pmn,Pmx,Sa,Smn,Smx", "s-------------", "F-------------" }, \
     LOG_STRUCTURE_FROM_BEACON                                       \
     LOG_STRUCTURE_FROM_PROXIMITY                                    \
@@ -1225,9 +1259,9 @@ LOG_STRUCTURE_FROM_FENCE \
     { LOG_DF_FILE_STATS, sizeof(log_DSF), \
       "DSF", "QIHIIII", "TimeUS,Dp,Blk,Bytes,FMn,FMx,FAv", "s--b---", "F--0---" }, \
     { LOG_RALLY_MSG, sizeof(log_Rally), \
-      "RALY", "QBBLLhB", "TimeUS,Tot,Seq,Lat,Lng,Alt,Flags", "s--DUm-", "F--GGB-" },  \
+      "RALY", "QBBLLhB", "TimeUS,Tot,Seq,Lat,Lng,Alt,Flags", "s--DUm-", "F--GG0-" },  \
     { LOG_MAV_MSG, sizeof(log_MAV),   \
-      "MAV", "QBHHHBHH",   "TimeUS,chan,txp,rxp,rxdp,flags,ss,tf", "s#----s-", "F-000-C-" },   \
+      "MAV", "QBHHHBHHI",   "TimeUS,chan,txp,rxp,rxdp,flags,ss,tf,mgs", "s#----s-s", "F-000-C-C" },   \
 LOG_STRUCTURE_FROM_VISUALODOM \
     { LOG_OPTFLOW_MSG, sizeof(log_Optflow), \
       "OF",   "QBffff",   "TimeUS,Qual,flowX,flowY,bodyX,bodyY", "s-EEEE", "F-0000" , true }, \
@@ -1252,7 +1286,7 @@ LOG_STRUCTURE_FROM_AIS \
     { LOG_SCRIPTING_MSG, sizeof(log_Scripting), \
       "SCR",   "QNIii", "TimeUS,Name,Runtime,Total_mem,Run_mem", "s#sbb", "F-F--", true }, \
     { LOG_VER_MSG, sizeof(log_VER), \
-      "VER",   "QBHBBBBIZHBB", "TimeUS,BT,BST,Maj,Min,Pat,FWT,GH,FWS,APJ,BU,FV", "s-----------", "F-----------", false }, \
+      "VER",   "QBHBBBBIZHBBII", "TimeUS,BT,BST,Maj,Min,Pat,FWT,GH,FWS,APJ,BU,FV,IMI,ICI", "s-------------", "F-------------", false }, \
     { LOG_MOTBATT_MSG, sizeof(log_MotBatt), \
       "MOTB", "QfffffB",  "TimeUS,LiftMax,BatVolt,ThLimit,ThrAvMx,ThrOut,FailFlags", "s------", "F------" , true }
 
@@ -1263,7 +1297,7 @@ enum LogMessages : uint8_t {
     LOG_PARAMETER_MSG = 32,
     LOG_IDS_FROM_NAVEKF2,
     LOG_IDS_FROM_NAVEKF3,
-    LOG_MESSAGE_MSG,
+    LOG_MSG_MSG,
     LOG_RCIN_MSG,
     LOG_RCI2_MSG,
     LOG_RCOUT_MSG,
@@ -1300,11 +1334,14 @@ enum LogMessages : uint8_t {
     LOG_ARSP_MSG,
     LOG_IDS_FROM_RPM,
     LOG_RFND_MSG,
-    LOG_MAV_STATS,
+    LOG_DMS_MSG,
     LOG_FORMAT_UNITS_MSG,
     LOG_UNIT_MSG,
     LOG_MULT_MSG,
     LOG_RALLY_MSG,
+#if AP_RTC_LOGGING_ENABLED
+    LOG_RTC_MSG,
+#endif  // AP_RTC_LOGGING_ENABLED
 
     // LOG_MODE_MSG is used as a check for duplicates. Do not add between this and LOG_FORMAT_MSG
     LOG_MODE_MSG,

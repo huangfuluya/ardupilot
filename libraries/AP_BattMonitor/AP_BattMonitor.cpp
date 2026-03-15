@@ -28,6 +28,7 @@
 #include "AP_BattMonitor_Synthetic_Current.h"
 #include "AP_BattMonitor_AD7091R5.h"
 #include "AP_BattMonitor_Scripting.h"
+#include "AP_BattMonitor_TIBQ76952.h"
 
 #include <AP_HAL/AP_HAL.h>
 
@@ -582,6 +583,7 @@ AP_BattMonitor::init()
 #if AP_BATTERY_ANALOG_ENABLED
             case Type::ANALOG_VOLTAGE_ONLY:
             case Type::ANALOG_VOLTAGE_AND_CURRENT:
+            case Type::ANALOG_CURRENT_ONLY:
                 drivers[instance] = NEW_NOTHROW AP_BattMonitor_Analog(*this, state[instance], _params[instance]);
                 break;
 #endif
@@ -706,6 +708,11 @@ AP_BattMonitor::init()
                 drivers[instance] = NEW_NOTHROW AP_BattMonitor_INA3221(*this, state[instance], _params[instance]);
                 break;
 #endif  // AP_BATTERY_INA3221_ENABLED
+#if AP_BATTERY_TIBQ76952_ENABLED
+            case Type::TIBQ76952_I2C:
+                drivers[instance] = NEW_NOTHROW AP_BattMonitor_TIBQ76952(*this, state[instance], _params[instance]);
+                break;
+#endif // AP_BATTERY_TIBQ76952_ENABLED
             case Type::NONE:
             default:
                 break;
@@ -730,66 +737,7 @@ AP_BattMonitor::init()
             // there will be a gap, but as we always check for drivers[instances] being nullptr
             // this is safe
             _num_instances = instance + 1;
-
-            // Convert the old analog & Bus parameters to the new dynamic parameter groups
-            convert_dynamic_param_groups(instance);
         }
-    }
-}
-
-void AP_BattMonitor::convert_dynamic_param_groups(uint8_t instance)
-{
-    AP_Param::ConversionInfo info;
-    if (!AP_Param::find_top_level_key_by_pointer(this, info.old_key)) {
-        return;
-    }
-
-    char param_prefix[6] {};
-    char param_name[17] {};
-    info.new_name = param_name;
-
-    const uint8_t param_instance = instance + 1;
-    // first battmonitor does not have '1' in the param name
-    if(param_instance == 1) {
-        hal.util->snprintf(param_prefix, sizeof(param_prefix), "BATT");
-    } else {
-        hal.util->snprintf(param_prefix, sizeof(param_prefix), "BATT%X", param_instance);
-    }
-    param_prefix[sizeof(param_prefix)-1] = '\0';
-
-    hal.util->snprintf(param_name, sizeof(param_name), "%s_%s", param_prefix, "MONITOR");
-    param_name[sizeof(param_name)-1] = '\0';
-
-    // Find the index of the BATTn_MONITOR which is not moving to index the moving parameters off from
-    AP_Param::ParamToken token = AP_Param::ParamToken {};
-    ap_var_type type;
-    AP_Param* param = AP_Param::find_by_name(param_name, &type, &token);
-    const uint8_t battmonitor_index = 1;
-    if( param == nullptr) {
-        // BATTn_MONITOR not found
-        return;
-    }
-
-    const struct convert_table {
-        uint32_t old_group_element;
-        ap_var_type type;
-        const char* new_name;
-    }  conversion_table[] = {
-        // PARAMETER_CONVERSION - Added: Aug-2021
-            { 2,  AP_PARAM_INT8,  "VOLT_PIN"  },
-            { 3,  AP_PARAM_INT8,  "CURR_PIN"  },
-            { 4,  AP_PARAM_FLOAT, "VOLT_MULT" },
-            { 5,  AP_PARAM_FLOAT, "AMP_PERVLT"},
-            { 6,  AP_PARAM_FLOAT, "AMP_OFFSET"},
-            { 20, AP_PARAM_INT8,  "I2C_BUS"   },
-        };
-
-    for (const auto & elem : conversion_table) {
-        info.old_group_element = token.group_element + ((elem.old_group_element - battmonitor_index) * 64);
-        info.type = elem.type;
-
-        hal.util->snprintf(param_name, sizeof(param_name), "%s_%s", param_prefix, elem.new_name);
-        AP_Param::convert_old_parameter(&info, 1.0f, 0);
     }
 }
 
@@ -1256,21 +1204,21 @@ bool AP_BattMonitor::get_state_of_health_pct(uint8_t instance, uint8_t &soh_pct)
     return drivers[instance]->get_state_of_health_pct(soh_pct);
 }
 
-// Enable/Disable (Turn on/off) MPPT power to all backends who are MPPTs
-void AP_BattMonitor::MPPT_set_powered_state_to_all(const bool power_on)
+// Enable/Disable (Turn on/off) power to all backends who are MPPTs or BMSs
+void AP_BattMonitor::set_powered_state_to_all(const bool power_on)
 {
     for (uint8_t i=0; i < _num_instances; i++) {
-        MPPT_set_powered_state(i, power_on);
+        set_powered_state(i, power_on);
     }
 }
 
-// Enable/Disable (Turn on/off) MPPT power. When disabled, the MPPT does not
+// Enable/Disable (Turn on/off) power. When disabled, the MPPT or BMS does not
 // supply energy to the system regardless if it's capable to or not. When enabled
 // it will supply energy if available.
-void AP_BattMonitor::MPPT_set_powered_state(const uint8_t instance, const bool power_on)
+void AP_BattMonitor::set_powered_state(const uint8_t instance, const bool power_on)
 {
-    if (instance < _num_instances) {
-        drivers[instance]->mppt_set_powered_state(power_on);
+    if (instance < _num_instances && drivers[instance] != nullptr) {
+        drivers[instance]->set_powered_state(power_on);
     }
 }
 
@@ -1301,6 +1249,9 @@ bool AP_BattMonitor::healthy() const
 bool AP_BattMonitor::handle_scripting(uint8_t idx, const BattMonitorScript_State &_state)
 {
     if (idx >= _num_instances) {
+        return false;
+    }
+    if (drivers[idx] == nullptr) {
         return false;
     }
     return drivers[idx]->handle_scripting(_state);

@@ -88,33 +88,15 @@ public:
     // if we have an estimate from a specific sensor index
     bool airspeed_EAS(uint8_t airspeed_index, float &airspeed_ret) const override;
 
-    // return a synthetic EAS estimate (one derived from sensors
-    // other than an actual airspeed sensor), if available. return
-    // true if we have a synthetic airspeed.  ret will not be modified
-    // on failure.
-    bool synthetic_airspeed_EAS(float &ret) const WARN_IF_UNUSED {
-        ret = _last_airspeed_TAS;
-        return true;
-    }
-
     // return a ground vector estimate in meters/second, in North/East order
     Vector2f groundspeed_vector() override;
 
     bool            use_compass() override;
 
-    // return the quaternion defining the rotation from NED to XYZ (body) axes
-    bool get_quaternion(Quaternion &quat) const override WARN_IF_UNUSED;
-
     void estimate_wind(void);
 
     // is the AHRS subsystem healthy?
     bool healthy() const override;
-
-    bool get_velocity_NED(Vector3f &vec) const override;
-
-    // Get a derivative of the vertical position in m/s which is kinematically consistent with the vertical position is required by some control loops.
-    // This is different to the vertical velocity from the EKF which is not always consistent with the vertical position due to the various errors that are being corrected for.
-    bool get_vert_pos_rate_D(float &velocity) const override;
 
     // returns false if we fail arming checks, in which case the buffer will be populated with a failure message
     // requires_position should be true if horizontal position configuration should be checked (not used)
@@ -122,9 +104,9 @@ public:
 
     // relative-origin functions for fallback in AP_InertialNav
     bool get_origin(Location &ret) const override;
-    bool get_relative_position_NED_origin(Vector3f &vec) const override;
-    bool get_relative_position_NE_origin(Vector2f &posNE) const override;
-    bool get_relative_position_D_origin(float &posD) const override;
+    bool get_relative_position_NED_origin(Vector3p &vec) const override;
+    bool get_relative_position_NE_origin(Vector2p &posNE) const override;
+    bool get_relative_position_D_origin(postype_t &posD) const override;
 
     void send_ekf_status_report(class GCS_MAVLINK &link) const override;
 
@@ -134,6 +116,12 @@ public:
     void get_control_limits(float &ekfGndSpdLimit, float &controlScaleXY) const override;
 
 private:
+
+    // Get a derivative of the vertical position in m/s which is kinematically consistent with the vertical position is required by some control loops.
+    // This is different to the vertical velocity from the EKF which is not always consistent with the vertical position due to the various errors that are being corrected for.
+    bool get_vert_pos_rate_D(float &velocity) const;
+
+    bool get_velocity_NED(Vector3f &vec) const;
 
     // dead-reckoning support
     bool get_location(Location &loc) const;

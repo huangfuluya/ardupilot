@@ -16,14 +16,14 @@ void Copter::heli_init()
 {
     // pre-load stab col values as mode is initialized as Stabilize, but stabilize_init() function is not run on start-up.
     input_manager.set_use_stab_col(true);
-    input_manager.set_stab_col_ramp(1.0);
+    input_manager.set_collective_ramp(0);
 }
 
 // heli_check_dynamic_flight - updates the dynamic_flight flag based on our horizontal velocity
 // should be called at 50hz
 void Copter::check_dynamic_flight(void)
 {
-    if (motors->get_spool_state() != AP_Motors::SpoolState::THROTTLE_UNLIMITED ||
+    if ((motors->get_spool_state() != AP_Motors::SpoolState::THROTTLE_UNLIMITED && !motors->in_autorotation()) ||
         flightmode->is_landing()) {
         heli_dynamic_flight_counter = 0;
         heli_flags.dynamic_flight = false;
@@ -33,20 +33,20 @@ void Copter::check_dynamic_flight(void)
     bool moving = false;
 
     // with GPS lock use inertial nav to determine if we are moving
-    if (position_ok()) {
+    Vector3f vel_ned_ms;
+    if (AP::ahrs().get_velocity_NED(vel_ned_ms)) {
         // get horizontal speed
-        const float speed = inertial_nav.get_speed_xy_cms();
-        moving = (speed >= HELI_DYNAMIC_FLIGHT_SPEED_MIN);
+        moving = (vel_ned_ms.xy().length() * 100.0 >= HELI_DYNAMIC_FLIGHT_SPEED_MIN);
     } else {
         // with no GPS lock base it on throttle and forward lean angle
-        moving = (motors->get_throttle() > 0.8f || ahrs.pitch_sensor < -1500);
+        moving = (motors->get_throttle() > 0.8f || ahrs.get_pitch_deg() < -15);
     }
 
 #if AP_RANGEFINDER_ENABLED
     if (!moving && rangefinder_state.enabled && rangefinder.status_orient(ROTATION_PITCH_270) == RangeFinder::Status::Good) {
         // when we are more than 2m from the ground with good
         // rangefinder lock consider it to be dynamic flight
-        moving = (rangefinder.distance_cm_orient(ROTATION_PITCH_270) > 200);
+        moving = (rangefinder.distance_orient(ROTATION_PITCH_270) > 2);
     }
 #endif
 

@@ -462,10 +462,10 @@ void AP_RunCam::handle_in_menu(Event ev)
 // map rc input to an event
 AP_RunCam::Event AP_RunCam::map_rc_input_to_event() const
 {
-    const RC_Channel::AuxSwitchPos throttle = rc().get_throttle_channel().get_aux_switch_pos();
-    const RC_Channel::AuxSwitchPos yaw = rc().get_yaw_channel().get_aux_switch_pos();
-    const RC_Channel::AuxSwitchPos roll = rc().get_roll_channel().get_aux_switch_pos();
-    const RC_Channel::AuxSwitchPos pitch = rc().get_pitch_channel().get_aux_switch_pos();
+    const RC_Channel::AuxSwitchPos throttle = rc().get_throttle_channel().get_stick_gesture_pos();
+    const RC_Channel::AuxSwitchPos yaw = rc().get_yaw_channel().get_stick_gesture_pos();
+    const RC_Channel::AuxSwitchPos roll = rc().get_roll_channel().get_stick_gesture_pos();
+    const RC_Channel::AuxSwitchPos pitch = rc().get_pitch_channel().get_stick_gesture_pos();
 
     Event result = Event::NONE;
 
@@ -969,11 +969,11 @@ void AP_RunCam::parse_device_info(const Request& request)
     }
     if (_features > 0) {
         _state = State::INITIALIZED;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "RunCam initialized, features 0x%04X, %d-key OSD\n", _features.get(),
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "RunCam initialized, features 0x%04X, %d-key OSD", _features.get(),
             has_5_key_OSD() ? 5 : has_2_key_OSD() ? 2 : 0);
     } else {
         // nothing as as nothing does
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "RunCam device not found\n");
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "RunCam device not found");
     }
     debug("RunCam: initialized state: video: %d, osd: %d, cam: %d\n", int(_video_recording), int(_osd_option), int(_cam_control_option));
 }

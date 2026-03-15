@@ -18,7 +18,7 @@
 
 #include "AP_ExternalAHRS_config.h"
 
-#if HAL_EXTERNAL_AHRS_ENABLED
+#if AP_EXTERNAL_AHRS_ENABLED
 
 #include "AP_ExternalAHRS.h"
 #include "AP_ExternalAHRS_backend.h"
@@ -26,6 +26,7 @@
 #include "AP_ExternalAHRS_MicroStrain5.h"
 #include "AP_ExternalAHRS_MicroStrain7.h"
 #include "AP_ExternalAHRS_InertialLabs.h"
+#include "AP_ExternalAHRS_SBG.h"
 
 #include <GCS_MAVLink/GCS.h>
 #include <AP_AHRS/AP_AHRS.h>
@@ -58,7 +59,7 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
     // @Param: _TYPE
     // @DisplayName: AHRS type
     // @Description: Type of AHRS device
-    // @Values: 0:None,1:VectorNav,2:MicroStrain5,5:InertialLabs,7:MicroStrain7
+    // @Values: 0:None,1:VectorNav,2:MicroStrain5,5:InertialLabs,7:MicroStrain7,8:SBG
     // @User: Standard
     AP_GROUPINFO_FLAGS("_TYPE", 1, AP_ExternalAHRS, devtype, HAL_EXTERNAL_AHRS_DEFAULT, AP_PARAM_FLAG_ENABLE),
 
@@ -73,6 +74,7 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
     // @DisplayName: External AHRS options
     // @Description: External AHRS options bitmask
     // @Bitmask: 0:Vector Nav use uncompensated values for accel gyro and mag.
+    // @Bitmask: 1:SBG uses EKF as GNSS.
     // @User: Standard
     AP_GROUPINFO("_OPTIONS", 3, AP_ExternalAHRS, options, 0),
 
@@ -85,7 +87,7 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
 
     // @Param: _LOG_RATE
     // @DisplayName: AHRS logging rate
-    // @Description: Logging rate for EARHS devices
+    // @Description: Logging rate for EAHRS devices
     // @Units: Hz
     // @User: Standard
     AP_GROUPINFO("_LOG_RATE", 5, AP_ExternalAHRS, log_rate, 10),
@@ -129,6 +131,12 @@ void AP_ExternalAHRS::init(void)
         backend = NEW_NOTHROW AP_ExternalAHRS_InertialLabs(this, state);
         return;
 #endif
+
+#if AP_EXTERNAL_AHRS_SBG_ENABLED
+    case DevType::SBG:
+        backend = NEW_NOTHROW AP_ExternalAHRS_SBG(this, state);
+        return;
+#endif // AP_EXTERNAL_AHRS_SBG_ENABLED
 
     }
 
@@ -174,6 +182,11 @@ bool AP_ExternalAHRS::get_origin(Location &loc)
 {
     if (state.have_origin) {
         WITH_SEMAPHORE(state.sem);
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+        if (!state.origin.initialised()) {
+            AP_HAL::panic("Uninitialized origin in AP_ExternalAHRS.");
+        }
+#endif
         loc = state.origin;
         return true;
     }
@@ -198,6 +211,11 @@ bool AP_ExternalAHRS::get_location(Location &loc)
     }
     WITH_SEMAPHORE(state.sem);
     loc = state.location;
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+    if (!loc.initialised()) {
+        AP_HAL::panic("Uninitialized location in AP_ExternalAHRS.");
+    }
+#endif
 
     if (state.last_location_update_us != 0 &&
         state.have_velocity) {
@@ -270,10 +288,13 @@ bool AP_ExternalAHRS::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) 
             return false;
         }
     }
-
-    if (!state.have_origin) {
-        hal.util->snprintf(failure_msg, failure_msg_len, "ExternalAHRS: No origin");
-	    return false;
+    AP_AHRS &ahrs = AP::ahrs();
+    if (ahrs.configured_ekf_type() == AP_AHRS::EKFType::EXTERNAL) {
+        // when using EAHRS as the EKF source, we must have a valid position origin
+        if (!state.have_origin) {
+            hal.util->snprintf(failure_msg, failure_msg_len, "ExternalAHRS: No origin");
+            return false;
+        }
     }
     return true;
 }
@@ -384,7 +405,7 @@ void AP_ExternalAHRS::update(void)
     WITH_SEMAPHORE(state.sem);
 #if HAL_LOGGING_ENABLED
     const uint32_t now_ms = AP_HAL::millis();
-    if (log_rate.get() > 0 && now_ms - last_log_ms >= uint32_t(1000U/log_rate.get())) {
+    if (enabled() && log_rate.get() > 0 && now_ms - last_log_ms >= uint32_t(1000U/log_rate.get())) {
         last_log_ms = now_ms;
 
         // @LoggerMessage: EAHR
@@ -459,5 +480,5 @@ AP_ExternalAHRS &externalAHRS()
 
 };
 
-#endif  // HAL_EXTERNAL_AHRS_ENABLED
+#endif  // AP_EXTERNAL_AHRS_ENABLED
 

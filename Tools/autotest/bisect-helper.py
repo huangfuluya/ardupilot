@@ -24,7 +24,8 @@ git bisect reset
 git bisect good a7647e77d9 &&
   git bisect bad 153ad9539866f8d93a99e9998118bb090d2f747f &&
   git bisect run /tmp/bisect-helper.py --build \
-    --waf-configure-arg="--board bebop"
+    --waf-configure-arg="--board pixflamingo" \
+    --build-failure-string="note: this is the location of the previous definition"
 
 # Use a failing test to work out which commit broke things:
 cp Tools/autotest/bisect-helper.py /tmp
@@ -59,21 +60,19 @@ AP_FLAKE8_CLEAN
 
 import optparse
 import os
-import subprocess
 import shlex
+import subprocess
 import sys
 import time
 import traceback
 
 
 def get_exception_stacktrace(e):
-    if sys.version_info[0] >= 3:
-        ret = "%s\n" % e
-        ret += ''.join(traceback.format_exception(type(e),
-                                                  value=e,
-                                                  tb=e.__traceback__))
-        return ret
-    return traceback.format_exc(e)
+    ret = "%s\n" % e
+    ret += ''.join(traceback.format_exception(type(e),
+                                              value=e,
+                                              tb=e.__traceback__))
+    return ret
 
 
 class Bisect(object):
