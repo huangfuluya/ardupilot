@@ -373,9 +373,9 @@ void Plane::do_takeoff(const AP_Mission::Mission_Command& cmd)
 {
     // 判断当前飞行模式是否为auto
     if (control_mode == &mode_auto){
-        _actived_takeoff_type = g2.takeoff_type;
+        auto_state._actived_takeoff_type = g2.takeoff_type;
     }else{
-        _actived_takeoff_type = 0;
+        auto_state._actived_takeoff_type = 0;
     }
     prev_WP_loc = current_loc;
     set_next_WP(cmd.content.location);
@@ -387,7 +387,7 @@ void Plane::do_takeoff(const AP_Mission::Mission_Command& cmd)
     }
     auto_state.takeoff_altitude_rel_cm = next_WP_loc.alt - home.alt;
  
-    if (_actived_takeoff_type == 0)
+    if (auto_state._actived_takeoff_type == 0)
     {   
         next_WP_loc.lat = home.lat + 10;
         next_WP_loc.lng = home.lng + 10;
@@ -410,7 +410,7 @@ void Plane::do_takeoff(const AP_Mission::Mission_Command& cmd)
             next_WP_loc = first_WP_cmd.content.location;
         }else{
             g2.takeoff_type.set(0); //No valid WP found after Takeoff command, revert to hand/bungee launch
-            _actived_takeoff_type = 0;
+            auto_state._actived_takeoff_type = 0;
         }
 	    //Project takeoff loc forward 2x as long as the Runway along centerline distance (assume that Takeoff Location is placed at the end of the Runway centerline)
 		float runway_length=current_loc.get_distance(next_WP_loc);
@@ -608,13 +608,13 @@ bool Plane::verify_takeoff()
 #endif
     // 判断当前飞行模式是否为auto
     if (control_mode == &mode_auto){
-        _actived_takeoff_type = g2.takeoff_type;
+        auto_state._actived_takeoff_type = g2.takeoff_type;
     }else{
-        _actived_takeoff_type = 0;
+        auto_state._actived_takeoff_type = 0;
     }
     
     if (trust_ahrs_yaw && steer_state.hold_course_cd == -1) {
-        if (_actived_takeoff_type == 0) {  // Free hand or bungee launch
+        if (auto_state._actived_takeoff_type == 0) {  // Free hand or bungee launch
             const float min_gps_speed = 5;
             if (auto_state.takeoff_speed_time_ms == 0 &&
                 gps.status() >= AP_GPS::GPS_OK_FIX_3D &&
@@ -664,7 +664,7 @@ bool Plane::verify_takeoff()
     // if (steer_state.hold_course_cd != -1) {
     if ((steer_state.hold_course_cd != -1)) {
         // nav_controller->update_heading_hold(steer_state.hold_course_cd);
-        if(_actived_takeoff_type == 2){
+        if(auto_state._actived_takeoff_type == 2){
             if ((gps.ground_speed() >= 1) && (millis() - auto_state.runway_takeoff_centerline_deviation_analysed_ms > 1000)){
                 float new_runway_centerline_bearing = current_loc.get_bearing_to(next_WP_loc);
                 gcs().send_text(MAV_SEVERITY_INFO,
