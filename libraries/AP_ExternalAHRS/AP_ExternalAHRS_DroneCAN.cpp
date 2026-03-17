@@ -183,7 +183,7 @@ void AP_ExternalAHRS_DroneCAN::handle_nav_solution(const uavcan_navigation_Globa
     AP::ins().handle_external(ins);
 
     // pass barometer data if available
-    if (last_baro_ms != 0 && !isnanf(msg.height_baro) && msg.height_baro > 0.0f) {
+    if (last_baro_ms != 0 && !isnan(msg.height_baro) && msg.height_baro > 0.0f) {
         AP_ExternalAHRS::baro_data_message_t baro {};
         baro.instance = 0;
         baro.pressure_pa = baro_pressure_pa;
