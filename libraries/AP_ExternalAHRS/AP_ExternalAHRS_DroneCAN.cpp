@@ -224,13 +224,25 @@ void AP_ExternalAHRS_DroneCAN::handle_ahrs_solution(const uavcan_equipment_ahrs_
 
     last_imu_ms = now_ms;
     last_ahrs_solution_ms = now_ms;
+
+    // pass IMU data to InertialSensor
+    AP_ExternalAHRS::ins_data_message_t ins {};
+    ins.accel = state.accel;
+    ins.gyro = state.gyro;
+    ins.temperature = AP::baro().get_temperature();
+    AP::ins().handle_external(ins);
+}
+
+/*
+  handle uavcan.equipment.ahrs.RawIMU - raw gyro and accelerometer data.
   Used when Solution/GlobalNavigationSolution is not available.
  */
 void AP_ExternalAHRS_DroneCAN::handle_raw_imu(const uavcan_equipment_ahrs_RawIMU &msg)
 {
     const uint32_t now_ms = AP_HAL::millis();
     // if we are receiving higher-level messages, prefer those for IMU
-    if (now_ms - last_nav_solution_ms < DRONECAN_AHRS_TIMEOUT_MS) {
+    if (now_ms - last_nav_solution_ms < DRONECAN_AHRS_TIMEOUT_MS ||
+        now_ms - last_ahrs_solution_ms < DRONECAN_AHRS_TIMEOUT_MS) {
         return;
     }
 
