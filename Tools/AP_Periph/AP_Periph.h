@@ -187,6 +187,9 @@ public:
 #if AP_PERIPH_AHRS_SERIAL_ENABLED
     void can_ahrs_serial_update();
 #endif
+#if AP_PERIPH_AHRS_DRONECAN_ENABLED
+    void can_ahrs_dronecan_update();
+#endif
 #if AP_PERIPH_IMU_ENABLED
     void can_imu_update();
 #endif

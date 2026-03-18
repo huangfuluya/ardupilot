@@ -1,6 +1,3 @@
 # Default Parameters for Pixhawk6X-periph (External AHRS)
 
 CAN_SLCAN_CPORT 1
-
-# SERIAL1 (TELEM1/UART7) used for AHRS serial output
-AHRS_SERIAL_PORT 1

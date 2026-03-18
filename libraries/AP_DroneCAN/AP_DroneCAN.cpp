@@ -64,6 +64,10 @@
 
 #include <AP_RPM/RPM_DroneCAN.h>
 
+#if AP_EXTERNAL_AHRS_PIXHAWK6X_ENABLED
+#include <AP_ExternalAHRS/AP_ExternalAHRS_Pixhawk6X.h>
+#endif
+
 extern const AP_HAL::HAL& hal;
 
 // setup default pool size
@@ -407,6 +411,9 @@ void AP_DroneCAN::init(uint8_t driver_index)
 #endif
 #if AP_RPM_DRONECAN_ENABLED
     subscribed = subscribed && AP_RPM_DroneCAN::subscribe_msgs(this);
+#endif
+#if AP_EXTERNAL_AHRS_PIXHAWK6X_ENABLED
+    subscribed = subscribed && AP_ExternalAHRS_Pixhawk6X::subscribe_msgs(this);
 #endif
 
     if (!subscribed) {
