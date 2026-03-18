@@ -67,7 +67,7 @@ void AP_Periph_FW::can_ahrs_dronecan_update(void)
                 gns.height_ellipsoid = gns.height_msl;
 
                 const Vector3f &vel  = gps.velocity();
-                // Rotate NED velocity to body frame using rotation matrix (R^T * v_ned)
+                // Rotate NED velocity to body frame using quaternion earth_to_body()
                 Vector3f body_vel = vel;
                 q.earth_to_body(body_vel);
                 gns.linear_velocity_body[0] = body_vel.x;

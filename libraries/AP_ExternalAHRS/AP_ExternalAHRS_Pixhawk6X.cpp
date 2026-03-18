@@ -161,12 +161,12 @@ void AP_ExternalAHRS_Pixhawk6X::handle_globalnavsolution(AP_DroneCAN *ap_droneca
         }
 
         // linear_velocity_body is in body frame; convert to NED using rotation matrix
-        Vector3f ned_vel(msg.linear_velocity_body[0],
+        Vector3f body_vel(msg.linear_velocity_body[0],
                          msg.linear_velocity_body[1],
                          msg.linear_velocity_body[2]);
         Matrix3f m;
         _singleton->state.quat.rotation_matrix(m);
-        _singleton->state.velocity      = m.transposed() * ned_vel;
+        _singleton->state.velocity      = m.transposed() * body_vel;
         _singleton->state.have_velocity = true;
     }
 
