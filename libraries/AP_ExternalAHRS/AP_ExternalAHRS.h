@@ -63,6 +63,9 @@ public:
 #if AP_EXTERNAL_AHRS_SBG_ENABLED
         SBG = 8,
 #endif
+#if AP_EXTERNAL_AHRS_PIXHAWK6X_ENABLED
+        Pixhawk6X = 11,
+#endif
         // 9 reserved for EulerNav
         // 10 reserved for Aeron
     };

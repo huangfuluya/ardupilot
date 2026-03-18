@@ -294,6 +294,15 @@ void AP_Periph_FW::init()
         msp_init(hal.serial(g.msp_port));
     }
 #endif
+
+#if AP_PERIPH_AHRS_SERIAL_ENABLED
+    if (g.ahrs_serial_port >= 0) {
+        if (!hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_Periph_FW::can_ahrs_serial_update, void),
+                                          "AHRS_SERIAL", 4096, AP_HAL::Scheduler::PRIORITY_CAN, 0)) {
+            GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "Failed to start AHRS serial thread");
+        }
+    }
+#endif
     
 #if AP_TEMPERATURE_SENSOR_ENABLED
     temperature_sensor.init();

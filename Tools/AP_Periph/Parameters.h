@@ -105,6 +105,7 @@ public:
         k_param_battery_tag,
         k_param_servo_command_timeout_ms,
         k_param_servo_telem_msg_rate,
+        k_param_ahrs_serial_port,
     };
 
     AP_Int16 format_version;
@@ -200,6 +201,10 @@ public:
 #endif
 #if AP_SERVO_TELEM_ENABLED
     AP_Int16 servo_telem_msg_rate;
+#endif
+
+#if AP_PERIPH_AHRS_SERIAL_ENABLED
+    AP_Int8 ahrs_serial_port;
 #endif
 
     AP_Int8 debug;
