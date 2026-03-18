@@ -27,6 +27,7 @@
 
 struct uavcan_equipment_ahrs_Solution;
 struct uavcan_equipment_ahrs_RawIMU;
+struct uavcan_navigation_GlobalNavigationSolution;
 
 class AP_ExternalAHRS_Pixhawk6X : public AP_ExternalAHRS_backend {
 
@@ -60,6 +61,7 @@ private:
     // timestamps of last received messages (ms)
     uint32_t last_att_ms;
     uint32_t last_imu_ms;
+    uint32_t last_gns_ms;
 
     // singleton for use in static DroneCAN callbacks
     static AP_ExternalAHRS_Pixhawk6X *_singleton;
@@ -69,6 +71,8 @@ private:
                                 const uavcan_equipment_ahrs_Solution &msg);
     static void handle_rawimu(AP_DroneCAN *ap_dronecan, const CanardRxTransfer &transfer,
                                const uavcan_equipment_ahrs_RawIMU &msg);
+    static void handle_globalnavsolution(AP_DroneCAN *ap_dronecan, const CanardRxTransfer &transfer,
+                                         const uavcan_navigation_GlobalNavigationSolution &msg);
 };
 
 #endif  // AP_EXTERNAL_AHRS_PIXHAWK6X_ENABLED

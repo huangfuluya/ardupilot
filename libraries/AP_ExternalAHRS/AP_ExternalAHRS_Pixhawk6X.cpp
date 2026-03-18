@@ -45,7 +45,8 @@ AP_ExternalAHRS_Pixhawk6X::AP_ExternalAHRS_Pixhawk6X(AP_ExternalAHRS *_frontend,
                                                      AP_ExternalAHRS::state_t &_state) :
     AP_ExternalAHRS_backend(_frontend, _state),
     last_att_ms(0),
-    last_imu_ms(0)
+    last_imu_ms(0),
+    last_gns_ms(0)
 {
     _singleton = this;
 
@@ -58,14 +59,15 @@ AP_ExternalAHRS_Pixhawk6X::AP_ExternalAHRS_Pixhawk6X(AP_ExternalAHRS *_frontend,
 }
 
 /*
-  register DroneCAN subscriptions for Solution and RawIMU messages
+  register DroneCAN subscriptions for Solution, RawIMU and GlobalNavigationSolution
 */
 bool AP_ExternalAHRS_Pixhawk6X::subscribe_msgs(AP_DroneCAN *ap_dronecan)
 {
     const auto driver_index = ap_dronecan->get_driver_index();
 
     return (Canard::allocate_sub_arg_callback(ap_dronecan, &handle_solution, driver_index) != nullptr)
-        && (Canard::allocate_sub_arg_callback(ap_dronecan, &handle_rawimu, driver_index) != nullptr);
+        && (Canard::allocate_sub_arg_callback(ap_dronecan, &handle_rawimu, driver_index) != nullptr)
+        && (Canard::allocate_sub_arg_callback(ap_dronecan, &handle_globalnavsolution, driver_index) != nullptr);
 }
 
 /*
@@ -120,6 +122,54 @@ void AP_ExternalAHRS_Pixhawk6X::handle_rawimu(AP_DroneCAN *ap_dronecan,
     ins.temperature = -300.0f;  // temperature not available in RawIMU message
 
     AP::ins().handle_external(ins);
+}
+
+/*
+  handle uavcan.navigation.GlobalNavigationSolution - provides position, velocity and attitude.
+  Position and NED velocity are stored in state so AP_AHRS can use them.
+*/
+void AP_ExternalAHRS_Pixhawk6X::handle_globalnavsolution(AP_DroneCAN *ap_dronecan,
+                                                          const CanardRxTransfer &transfer,
+                                                          const uavcan_navigation_GlobalNavigationSolution &msg)
+{
+    if (_singleton == nullptr) {
+        return;
+    }
+
+    WITH_SEMAPHORE(_singleton->state.sem);
+
+    // attitude quaternion (XYZW → WXYZ)
+    _singleton->state.quat = Quaternion(msg.orientation_xyzw[3],  // w
+                                        msg.orientation_xyzw[0],  // x
+                                        msg.orientation_xyzw[1],  // y
+                                        msg.orientation_xyzw[2]); // z
+    _singleton->state.have_quaternion = true;
+
+    // position (degrees → 1e-7 degrees integer, altitude m → cm)
+    if (!isnan(msg.latitude) && !isnan(msg.longitude) && !isnan(msg.height_msl)) {
+        _singleton->state.location = Location{
+            int32_t(msg.latitude  * 1.0e7),
+            int32_t(msg.longitude * 1.0e7),
+            int32_t(msg.height_msl * 100.0f),
+            Location::AltFrame::ABSOLUTE
+        };
+        _singleton->state.have_location = true;
+
+        if (!_singleton->state.have_origin) {
+            _singleton->state.origin    = _singleton->state.location;
+            _singleton->state.have_origin = true;
+        }
+
+        // linear_velocity_body is in body frame; rotate to NED using attitude
+        const Vector3f body_vel(msg.linear_velocity_body[0],
+                                msg.linear_velocity_body[1],
+                                msg.linear_velocity_body[2]);
+        _singleton->state.velocity      = _singleton->state.quat.rotate(body_vel);
+        _singleton->state.have_velocity = true;
+    }
+
+    _singleton->last_att_ms = AP_HAL::millis();
+    _singleton->last_gns_ms = _singleton->last_att_ms;
 }
 
 bool AP_ExternalAHRS_Pixhawk6X::healthy(void) const

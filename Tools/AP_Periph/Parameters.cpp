@@ -762,17 +762,6 @@ const AP_Param::Info AP_Periph_FW::var_info[] = {
     GSCALAR(servo_telem_msg_rate, "SRV_TLM_MSG_RATE", 20),
 #endif
 
-#if AP_PERIPH_AHRS_SERIAL_ENABLED
-    // @Param: AHRS_SERIAL_PORT
-    // @DisplayName: AHRS Serial Port
-    // @Description: Serial port number for AHRS serial output. Set to the SERIAL port index (0-based) to use for outputting APAS AHRS data.
-    // @Range: -1 10
-    // @Increment: 1
-    // @User: Advanced
-    // @RebootRequired: True
-    GSCALAR(ahrs_serial_port, "AHRS_SERIAL_PORT", 1),
-#endif
-
     AP_VAREND
 };
 
