@@ -623,8 +623,13 @@ void GCS_MAVLINK_Rover::handle_message(const mavlink_message_t &msg)
 
 void GCS_MAVLINK_Rover::handle_manual_control_axes(const mavlink_manual_control_t &packet, const uint32_t tnow)
 {
-    manual_override(rover.channel_steer, packet.y, 1000, 2000, tnow);
-    manual_override(rover.channel_throttle, packet.z, 1000, 2000, tnow);
+    // 除了一三通道的，别的通道的也要手动控制覆盖
+    manual_override(RC_Channels::rc_channel(0), packet.x, 1000, 2000, tnow);
+    manual_override(RC_Channels::rc_channel(1), packet.y, 1000, 2000, tnow);
+    manual_override(RC_Channels::rc_channel(2), packet.z, 1000, 2000, tnow);
+    manual_override(RC_Channels::rc_channel(3), packet.r, 1000, 2000, tnow);
+    // manual_override(rover.channel_steer, packet.y, 1000, 2000, tnow);
+    // manual_override(rover.channel_throttle, packet.z, 1000, 2000, tnow);
 }
 
 void GCS_MAVLINK_Rover::handle_set_attitude_target(const mavlink_message_t &msg)
