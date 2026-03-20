@@ -16,7 +16,7 @@
  * throttle) at that position indefinitely.
  *
  * Heading controller (P):
- *   steer = wrap_PI(bearing_to_target - current_yaw) × (4500 / π/2) × SURF_STEER_GAIN
+ *   steer = wrap_PI(bearing_to_target - current_yaw) × (4500 / π/2) × SURF_HEAD_KP
  *
  * Throttle (distance ramp):
  *   • > 3×WPNAV_RADIUS  : SURF_AUTO_SPD %
@@ -100,7 +100,7 @@ void ModeSurfaceAuto::run()
     const float bearing_rad     = copter.current_loc.get_bearing(_wp_target);
     const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw());
     const float steer = constrain_float(
-        heading_err_rad * (SURFACE_STEERING_MAX / M_PI_2) * g2.surface_steer_gain,
+        heading_err_rad * (SURFACE_STEERING_MAX / M_PI_2) * g2.surface_head_kp,
         -SURFACE_STEERING_MAX, SURFACE_STEERING_MAX);
 
     // Throttle: ramp down within 3× acceptance radius, coast inside

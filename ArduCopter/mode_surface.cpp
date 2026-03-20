@@ -20,7 +20,7 @@
  */
 
 // Scaled output limit for the steering servo (centidegrees, matches SERVO_MAX in AP_MotorsUGV)
-#define SURFACE_STEERING_MAX 4500.0f
+static constexpr float SURFACE_STEERING_MAX = 4500.0f;
 
 // surface_init - initialise surface controller
 bool ModeSurface::init(bool ignore_checks)
