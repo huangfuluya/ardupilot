@@ -101,6 +101,7 @@ public:
         AUTOROTATE =   26,  // Autonomous autorotation
         AUTO_RTL =     27,  // Auto RTL, this is not a true mode, AUTO will report as this mode if entered to perform a DO_LAND_START Landing sequence
         TURTLE =       28,  // Flip over after crash
+        SURFACE =      29,  // Unmanned surface vessel (boat) navigation for quad+boat hybrid
 
         // Mode number 30 reserved for "offboard" for external/lua control.
 
@@ -2152,3 +2153,27 @@ private:
 
 };
 #endif
+
+#if MODE_SURFACE_ENABLED
+class ModeSurface : public Mode {
+
+public:
+    // inherit constructor
+    using Mode::Mode;
+    Number mode_number() const override { return Number::SURFACE; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+    void exit() override;
+
+    bool is_autopilot() const override { return false; }
+    bool requires_position() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(AP_Arming::Method method) const override { return true; }
+    bool allows_save_trim() const override { return false; }
+
+protected:
+    const char *name() const override { return "SURFACE"; }
+    const char *name4() const override { return "SURF"; }
+};
+#endif  // MODE_SURFACE_ENABLED

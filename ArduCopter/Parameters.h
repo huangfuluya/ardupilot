@@ -703,6 +703,12 @@ public:
     void *mode_poshold_ptr;
 #endif
 
+#if MODE_SURFACE_ENABLED
+    // Surface mode (boat) gains
+    AP_Float surface_thr_gain;
+    AP_Float surface_steer_gain;
+#endif
+
 };
 
 extern const AP_Param::Info        var_info[];

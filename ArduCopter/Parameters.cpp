@@ -1169,6 +1169,24 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
     // @Increment: 0.1
     AP_GROUPINFO("PILOT_TKO_ALT_M", 20, ParametersG2, pilot_takeoff_alt_m, PILOT_TKO_ALT_M_DEFAULT),
 
+#if MODE_SURFACE_ENABLED
+    // @Param: SURF_THR_GAIN
+    // @DisplayName: Surface mode throttle gain
+    // @Description: Scaling factor applied to the throttle stick output when in Surface mode (boat navigation). Output drives SERVOx_FUNCTION=70 (Throttle) in the range 0 to 100 power percent. A value of 1.0 means full stick maps to 100% boat throttle.
+    // @Range: 0.0 2.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("SURF_THR_GAIN", 21, ParametersG2, surface_thr_gain, 1.0f),
+
+    // @Param: SURF_STEER_GAIN
+    // @DisplayName: Surface mode steering gain
+    // @Description: Scaling factor applied to the yaw stick output when in Surface mode (boat navigation). Output drives SERVOx_FUNCTION=26 (GroundSteering) in the range -4500 to +4500 centidegrees (i.e. ±45 degrees). A value of 1.0 means full stick maps to ±45 degrees of steering.
+    // @Range: 0.0 2.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("SURF_STEER_GAIN", 22, ParametersG2, surface_steer_gain, 1.0f),
+#endif
+
     // ID 62 is reserved for the AP_SUBGROUPEXTENSION
 
     AP_GROUPEND
