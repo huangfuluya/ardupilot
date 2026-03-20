@@ -1185,6 +1185,23 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
     // @Increment: 0.1
     // @User: Standard
     AP_GROUPINFO("SURF_STEER_GAIN", 22, ParametersG2, surface_steer_gain, 1.0f),
+
+    // @Param: SURF_AUTO_SPD
+    // @DisplayName: Surface auto/loiter cruise power
+    // @Description: Cruise power percentage (0-100) applied to the boat throttle when navigating in SURFACE_LOITER or SURFACE_AUTO mode. The throttle is ramped down to zero as the boat approaches its destination within 3x the WPNAV_RADIUS.
+    // @Range: 0 100
+    // @Increment: 5
+    // @Units: %
+    // @User: Standard
+    AP_GROUPINFO("SURF_AUTO_SPD", 23, ParametersG2, surface_auto_spd, 50.0f),
+
+    // @Param: SURF_HEAD_KP
+    // @DisplayName: Surface auto/loiter heading P gain
+    // @Description: Proportional gain for the heading controller used in SURFACE_LOITER and SURFACE_AUTO modes. A value of 1.0 maps a 90-degree heading error to full steering lock (4500 centidegrees). Increase for more aggressive turning; decrease if the boat oscillates.
+    // @Range: 0.1 3.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("SURF_HEAD_KP", 24, ParametersG2, surface_head_kp, 1.0f),
 #endif
 
     // ID 62 is reserved for the AP_SUBGROUPEXTENSION

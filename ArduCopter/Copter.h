@@ -1105,6 +1105,8 @@ private:
 #endif
 #if MODE_SURFACE_ENABLED
     ModeSurface mode_surface;
+    ModeSurfaceLoiter mode_surface_loiter;
+    ModeSurfaceAuto mode_surface_auto;
 #endif
 
     // mode.cpp

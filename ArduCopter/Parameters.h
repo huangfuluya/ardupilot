@@ -707,6 +707,8 @@ public:
     // Surface mode (boat) gains
     AP_Float surface_thr_gain;
     AP_Float surface_steer_gain;
+    AP_Float surface_auto_spd;   // cruise power % for SURFACE_LOITER and SURFACE_AUTO
+    AP_Float surface_head_kp;    // heading P gain for SURFACE_LOITER and SURFACE_AUTO
 #endif
 
 };
