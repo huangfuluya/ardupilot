@@ -227,6 +227,11 @@ public:
     friend class ModeZigZag;
     friend class ModeAutorotate;
     friend class ModeTurtle;
+#if MODE_SURFACE_ENABLED
+    friend class ModeSurface;
+    friend class ModeSurfaceLoiter;
+    friend class ModeSurfaceAuto;
+#endif
 
     friend class _AutoTakeoff;
 
