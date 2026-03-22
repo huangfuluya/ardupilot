@@ -65,6 +65,9 @@ public:
 #endif
         // 9 reserved for EulerNav
         // 10 reserved for Aeron
+#if AP_EXTERNAL_AHRS_DRONECAN_ENABLED
+        DroneCAN = 36,
+#endif
     };
 
     static AP_ExternalAHRS *get_singleton(void) {
