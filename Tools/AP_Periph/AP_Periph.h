@@ -184,6 +184,9 @@ public:
     void send_relposheading_msg();
     void can_baro_update();
     void can_airspeed_update();
+#if AP_PERIPH_AHRS_DRONECAN_ENABLED
+    void can_ahrs_dronecan_update();
+#endif
 #if AP_PERIPH_IMU_ENABLED
     void can_imu_update();
 #endif

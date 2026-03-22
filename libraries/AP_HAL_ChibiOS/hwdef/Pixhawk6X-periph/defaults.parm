@@ -1,0 +1,3 @@
+# Default Parameters for Pixhawk6X-periph (External AHRS)
+
+CAN_SLCAN_CPORT 1

@@ -294,6 +294,13 @@ void AP_Periph_FW::init()
         msp_init(hal.serial(g.msp_port));
     }
 #endif
+
+#if AP_PERIPH_AHRS_DRONECAN_ENABLED
+    if (!hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_Periph_FW::can_ahrs_dronecan_update, void),
+                                      "AHRS_CAN", 4096, AP_HAL::Scheduler::PRIORITY_CAN, 0)) {
+        GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "Failed to start AHRS DroneCAN thread");
+    }
+#endif
     
 #if AP_TEMPERATURE_SENSOR_ENABLED
     temperature_sensor.init();
