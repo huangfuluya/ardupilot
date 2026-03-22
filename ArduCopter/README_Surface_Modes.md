@@ -39,7 +39,7 @@
 |---|---|
 | `ArduCopter/mode.h` | 新增 `ModeSurface`、`ModeSurfaceLoiter`、`ModeSurfaceAuto` 类声明，均置于 `#if MODE_SURFACE_ENABLED` 编译守卫内。 |
 | `ArduCopter/Copter.h` | 新增三个模式成员变量 `mode_surface`、`mode_surface_loiter`、`mode_surface_auto`，并声明对应 `friend class`。 |
-| `ArduCopter/mode.cpp` | 在 `mode_from_mode_num()` 中新增模式编号 29/31/32 的分支，返回对应模式对象指针。 |
+| `ArduCopter/mode.cpp` | 在 `mode_from_mode_num()` 中新增模式编号 29/31/32 的分支，返回对应模式对象指针。在 `Mode::output_to_motors()` 中新增：非水面模式时将 `k_throttleLeft`/`k_throttleRight` 锁定在中位（1500 µs），防止可逆 ESC 在旋翼飞行期间意外转动。 |
 | `ArduCopter/config.h` | 新增宏 `MODE_SURFACE_ENABLED`（非直升机机型默认启用）。 |
 | `ArduCopter/Parameters.cpp` | 在 `ParametersG2` 参数表中新增四个参数：`SURF_THR_GAIN`（索引 21）、`SURF_STEER_GAIN`（索引 22）、`SURF_AUTO_SPD`（索引 23）、`SURF_HEAD_KP`（索引 24）。 |
 | `ArduCopter/Parameters.h` | 新增四个参数成员变量声明（`AP_Float surface_thr_gain` 等）。 |
@@ -52,18 +52,24 @@ SERVOx_FUNCTION = 70  (Throttle)         → 单路油门
 SERVOx_FUNCTION = 26  (GroundSteering)   → 舵机转向，输出范围 ±4500 cdeg
 ```
 
-**新设计**（双发差动推进）：
+**新设计**（双发差动推进，支持倒船）：
 ```
-SERVOx_FUNCTION = 73  (ThrottleLeft)     → 左发电调，输出范围 0..100 %
-SERVOx_FUNCTION = 74  (ThrottleRight)    → 右发电调，输出范围 0..100 %
+SERVOx_FUNCTION = 73  (ThrottleLeft)     → 左发可逆电调，scaled -100..+100
+SERVOx_FUNCTION = 74  (ThrottleRight)    → 右发可逆电调，scaled -100..+100
 
-left_motor  = clamp(throttle + diff, 0, 100)
-right_motor = clamp(throttle - diff, 0, 100)
+scaled  0   → 1500 µs（中位/停止）
+scaled +100 → max PWM（全速前进）
+scaled -100 → min PWM（全速倒退）
+
+left_motor  = clamp(throttle + diff, -100, +100)
+right_motor = clamp(throttle - diff, -100, +100)
 ```
 
 差动修正量 `diff` 来源：
 - **SURFACE 模式**：遥控器偏航杆 × `SURF_STEER_GAIN`
 - **SURFACE\_LOITER / AUTO 模式**：航向 P 控制器输出 × `SURF_HEAD_KP`
+
+**旋翼模式中的处理**：`Mode::output_to_motors()` 在非水面模式下将 `k_throttleLeft` / `k_throttleRight` 强制设置为 `set_angle(100)` + scaled 0（= 1500 µs），防止可逆 ESC 在旋翼飞行期间异常输出。
 
 ---
 
@@ -71,14 +77,14 @@ right_motor = clamp(throttle - diff, 0, 100)
 
 ## 2. 硬件接线
 
-本模式使用**双发差动**方式控制航向，无舵机转向通道。
+本模式使用**双发差动**方式控制航向，无舵机转向通道。**必须使用支持双向/可逆运行的电调**（中位 = 1500 µs）。
 
 ### 左侧电调（左发）
 
 | 项目 | 值 |
 |---|---|
 | 舵机功能 | `SERVOx_FUNCTION = 73`（ThrottleLeft） |
-| 输出范围 | 0 ~ 100（功率百分比） |
+| 输出范围 | −100 ~ +100（scaled 值，0 = 中位 1500 µs） |
 | 说明 | 对应 `SRV_Channel::k_throttleLeft` |
 
 ### 右侧电调（右发）
@@ -86,10 +92,12 @@ right_motor = clamp(throttle - diff, 0, 100)
 | 项目 | 值 |
 |---|---|
 | 舵机功能 | `SERVOx_FUNCTION = 74`（ThrottleRight） |
-| 输出范围 | 0 ~ 100（功率百分比） |
+| 输出范围 | −100 ~ +100（scaled 值，0 = 中位 1500 µs） |
 | 说明 | 对应 `SRV_Channel::k_throttleRight` |
 
 > 将上述两个功能分配到对应的 SERVO 通道（例如 SERVO5、SERVO6），确保左右电机方向与机体左右一致。
+> 电调需完成**中位校准**（1500 µs = 停止），以确保倒船功能正常工作。
+> 在旋翼模式下，两路通道自动输出 1500 µs（中位），不会驱动船用电机。
 
 ---
 
@@ -111,12 +119,13 @@ right_motor = clamp(throttle - diff, 0, 100)
 
 ### SURFACE（模式 29）
 
-**手动水面航行**。四旋翼电机保持 `GROUND_IDLE` 怠速，姿态控制器维持机体水平；飞手通过遥控器直接控制船的推进与转向：
+**手动水面航行**（支持倒船）。四旋翼电机保持 `GROUND_IDLE` 怠速，姿态控制器维持机体水平；飞手通过遥控器直接控制船的推进与转向：
 
-- **油门杆（CH3）** → 基础推力（0 ~ 100%），通过 `SURF_THR_GAIN` 缩放，左右等量分配。
-- **偏航杆（CH4）** → 差动修正量（±100%），通过 `SURF_STEER_GAIN` 缩放，左加右减实现转向。
+- **油门杆（CH3）中位以上** → 前进推力（0 ~ 100%），通过 `SURF_THR_GAIN` 缩放，左右等量分配。
+- **油门杆（CH3）中位以下** → 倒退推力（0 ~ −100%），同样等量分配。
+- **偏航杆（CH4）** → 差动修正量（±100%），通过 `SURF_STEER_GAIN` 缩放，左加右减实现转向。差动可使任一侧电机输出为负（倒转），实现原地转弯。
 
-切换到其他飞行模式后，输出自动归零，防止意外移动。
+切换到其他飞行模式后，输出自动归中位（1500 µs），防止意外移动。
 
 ### SURFACE\_LOITER（模式 31）
 
@@ -124,6 +133,7 @@ right_motor = clamp(throttle - diff, 0, 100)
 
 - 飞手可通过俯仰/横滚杆（体坐标系，自动旋转为 NE 方向）以 2 m/s 速率移动定点目标。
 - 到达目标圆内（`WPNAV_RADIUS`）时油门归零，依靠惯性自然停船。
+- 差动转弯时，若航向误差较大，差动修正量可超过基础油门，使内侧电机进入倒转以实现更紧的原地转弯。
 
 需要 GPS 有效定位方可进入。
 
@@ -133,8 +143,9 @@ right_motor = clamp(throttle - diff, 0, 100)
 
 - 仅处理上述两类导航命令，跳过其他类型（如 `NAV_TAKEOFF`、`NAV_LAND`）。
 - 到达当前航点后，自动加载下一个有效导航命令。
-- `NAV_LOITER_UNLIM` 使飞行器在该点无限期盘旋（持续开/关油门保持位置）。
-- 最后一个航点执行完毕后，输出归零并停止移动。
+- `NAV_LOITER_UNLIM` 使飞行器在该点无限期保持（持续开/关油门维持位置）。
+- 差动转弯时，内侧电机可进入倒转以缩短转弯半径。
+- 最后一个航点执行完毕后，输出归中位（1500 µs）并停止移动。
 
 需要 GPS 有效定位且任务列表非空方可进入。
 
@@ -142,29 +153,45 @@ right_motor = clamp(throttle - diff, 0, 100)
 
 ## 5. 控制律说明
 
-SURFACE\_LOITER 和 SURFACE\_AUTO 共用以下控制律：
-
-### 航向 P 控制器 → 差动混控
+### SURFACE 模式（手动）
 
 ```
-heading_err = wrap_PI(bearing_to_target - current_yaw)   [rad]
+thr  = (CH3_input - 500) × 0.2 × SURF_THR_GAIN   [%，−100..+100]
+diff = CH4_norm_dz × 100 × SURF_STEER_GAIN         [%，−100..+100]
+
+left_motor  = clamp(thr + diff, −100, +100)
+right_motor = clamp(thr − diff, −100, +100)
+```
+
+- 油门杆中位（500）→ thr = 0 → 两路均 1500 µs（停止）
+- 油门杆满上（1000）→ thr = +100 → 全速前进
+- 油门杆满下（0）→ thr = −100 → 全速倒退
+- 偏航杆可使任一侧电机输出为负（倒转），实现紧凑原地转弯
+
+### SURFACE\_LOITER 和 SURFACE\_AUTO 共用控制律
+
+#### 航向 P 控制器 → 差动混控
+
+```
+heading_err = wrap_PI(bearing_to_target − current_yaw)   [rad]
 diff        = heading_err × (100 / (π/2)) × SURF_HEAD_KP  [%]
-diff        = clamp(diff, -100, +100)
+diff        = clamp(diff, −100, +100)
 
-left_motor  = clamp(throttle + diff, 0, 100)
-right_motor = clamp(throttle - diff, 0, 100)
+left_motor  = clamp(throttle + diff, −100, +100)
+right_motor = clamp(throttle − diff, −100, +100)
 ```
 
-- `SURF_HEAD_KP = 1.0`：90° 航向误差对应 100% 差动（一侧满功率，另一侧归零）。
+- `SURF_HEAD_KP = 1.0`：90° 航向误差对应 100% 差动。
+- 当 |diff| > throttle 时，内侧电机进入反转，实现原地枢转式转弯（pivot turn）。
 - 增大 `SURF_HEAD_KP` 可使转向更激进；如船体出现蛇行振荡，应适当减小。
 
-### 油门距离渐变
+#### 油门距离渐变
 
 设 `R = WPNAV_RADIUS`（m），`spd = SURF_AUTO_SPD`（%）：
 
 ```
 dist > 3R         →  throttle = spd
-R < dist ≤ 3R     →  throttle = spd × (dist - R) / (2R)   （线性减速）
+R < dist ≤ 3R     →  throttle = spd × (dist − R) / (2R)   （线性减速）
 dist ≤ R          →  throttle = 0                          （滑行停止）
 ```
 

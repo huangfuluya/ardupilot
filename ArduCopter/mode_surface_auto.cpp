@@ -6,9 +6,11 @@
  * Surface Auto mode — mission waypoint navigation for quad+boat hybrid on water.
  *
  * The quad motors idle at GROUND_IDLE.  The boat's propulsion follows ArduCopter
- * mission NAV_WAYPOINT / NAV_LOITER_UNLIM commands via differential twin-engine mixing:
- *   Left  motor : SRV_Channel::k_throttleLeft  (0..100 %, SERVOx_FUNCTION = 73)
- *   Right motor : SRV_Channel::k_throttleRight (0..100 %, SERVOx_FUNCTION = 74)
+ * mission NAV_WAYPOINT / NAV_LOITER_UNLIM commands via differential twin-engine
+ * mixing.  Both ESCs must support bidirectional / reversible operation
+ * (neutral = 1500 µs):
+ *   Left  motor : SRV_Channel::k_throttleLeft  (-100..+100, SERVOx_FUNCTION = 73)
+ *   Right motor : SRV_Channel::k_throttleRight (-100..+100, SERVOx_FUNCTION = 74)
  *
  * Only MAV_CMD_NAV_WAYPOINT and MAV_CMD_NAV_LOITER_UNLIM commands are acted on.
  * All other nav commands are skipped.  The mode stops when the last waypoint is
@@ -17,8 +19,8 @@
  *
  * Heading controller (P) → differential mixing:
  *   diff = wrap_PI(bearing - yaw) × (100 / π/2) × SURF_HEAD_KP
- *   left_motor  = throttle + diff   (clamped 0..100)
- *   right_motor = throttle - diff   (clamped 0..100)
+ *   left_motor  = throttle + diff   (clamped -100..+100; negative = reverse)
+ *   right_motor = throttle - diff   (clamped -100..+100; negative = reverse)
  *
  * Throttle (distance ramp):
  *   • > 3×WPNAV_RADIUS  : SURF_AUTO_SPD %
@@ -115,9 +117,9 @@ void ModeSurfaceAuto::run()
     }
 
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
-                                    constrain_float(thr + diff, 0.0f, 100.0f));
+                                    constrain_float(thr + diff, -100.0f, 100.0f));
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
-                                    constrain_float(thr - diff, 0.0f, 100.0f));
+                                    constrain_float(thr - diff, -100.0f, 100.0f));
 }
 
 // surface_auto_exit - neutral outputs on exit

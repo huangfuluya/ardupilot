@@ -6,17 +6,18 @@
  * Surface Loiter mode — GPS position hold for quad+boat hybrid vehicle on water.
  *
  * The quad motors idle at GROUND_IDLE while the boat's propulsion holds position
- * using differential twin-engine mixing:
- *   Left  motor : SRV_Channel::k_throttleLeft  (0..100 %, SERVOx_FUNCTION = 73)
- *   Right motor : SRV_Channel::k_throttleRight (0..100 %, SERVOx_FUNCTION = 74)
+ * using differential twin-engine mixing.  Both ESCs must support bidirectional /
+ * reversible operation (neutral = 1500 µs):
+ *   Left  motor : SRV_Channel::k_throttleLeft  (-100..+100, SERVOx_FUNCTION = 73)
+ *   Right motor : SRV_Channel::k_throttleRight (-100..+100, SERVOx_FUNCTION = 74)
  *
  * On entry the loiter target is set to the current GPS position.  The pilot
  * can shift the target with roll/pitch sticks (body-frame, rotated to NE).
  *
  * Heading controller (P) → differential mixing:
  *   diff = wrap_PI(bearing - yaw) × (100 / π/2) × SURF_HEAD_KP
- *   left_motor  = throttle + diff   (clamped 0..100)
- *   right_motor = throttle - diff   (clamped 0..100)
+ *   left_motor  = throttle + diff   (clamped -100..+100; negative = reverse)
+ *   right_motor = throttle - diff   (clamped -100..+100; negative = reverse)
  *
  * Throttle (distance ramp):
  *   • > 3×WPNAV_RADIUS  : full SURF_AUTO_SPD %
@@ -92,9 +93,9 @@ void ModeSurfaceLoiter::run()
     }
 
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
-                                    constrain_float(thr + diff, 0.0f, 100.0f));
+                                    constrain_float(thr + diff, -100.0f, 100.0f));
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
-                                    constrain_float(thr - diff, 0.0f, 100.0f));
+                                    constrain_float(thr - diff, -100.0f, 100.0f));
 }
 
 // surface_loiter_exit - neutral outputs on exit

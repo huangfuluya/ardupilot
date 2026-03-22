@@ -6,19 +6,21 @@
  * Surface mode — unmanned surface vessel (boat) navigation for quad+boat hybrid
  *
  * The quadrotor motors idle at GROUND_IDLE while boat propulsion is commanded
- * through differential twin-engine SRV_Channel outputs:
- *   Throttle stick → base forward thrust mixed to both motors
- *   Yaw stick      → differential correction added/subtracted left/right
+ * through differential twin-engine SRV_Channel outputs.  Both ESCs must be
+ * configured for bidirectional / reversible operation (neutral = 1500 µs):
+ *   Throttle stick above centre → forward thrust, below centre → reverse thrust
+ *   Yaw stick                   → differential correction added/subtracted left/right
  *
- *   left_motor  = base_throttle + differential   (SRV_Channel::k_throttleLeft,  0..100 %)
- *   right_motor = base_throttle - differential   (SRV_Channel::k_throttleRight, 0..100 %)
+ *   left_motor  = throttle + differential   (SRV_Channel::k_throttleLeft,  -100..+100)
+ *   right_motor = throttle - differential   (SRV_Channel::k_throttleRight, -100..+100)
  *
- * The attitude controller runs at zero throttle to keep the hull level and
- * prepares the vehicle for a quick transition back to aerial flight.
+ * Scaled value 0 → 1500 µs (neutral/stopped), +100 → max PWM (full forward),
+ * -100 → min PWM (full reverse).
  *
  * Physical wiring / ground station setup:
  *   - Assign SERVOx_FUNCTION = 73 (ThrottleLeft)  to the port  (left)  ESC channel.
  *   - Assign SERVOx_FUNCTION = 74 (ThrottleRight) to the starboard (right) ESC channel.
+ *   - Use bidirectional/reversible ESCs (neutral calibrated at 1500 µs).
  *   - Tune SURF_THR_GAIN and SURF_STEER_GAIN as needed.
  */
 
@@ -62,19 +64,20 @@ void ModeSurface::run()
     attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw_rad(0.0f, 0.0f, 0.0f);
     attitude_control->set_throttle_out(0.0f, false, g.throttle_filt);
 
-    // Map throttle stick (get_control_in() → 0..1000) to base forward thrust (0..100 power %).
+    // Map throttle stick (0..1000, centre=500) to bidirectional thrust (-100..+100 %).
+    // Stick above centre → forward; below centre → reverse.
     const float thr = constrain_float(
-        channel_throttle->get_control_in() * 0.1f * g2.surface_thr_gain,
-        0.0f, 100.0f);
+        (channel_throttle->get_control_in() - 500) * 0.2f * g2.surface_thr_gain,
+        -100.0f, 100.0f);
 
     // Map yaw stick (-1.0..1.0) to differential correction (±100 %).
     // Positive yaw input → turn right (left motor faster, right motor slower).
     const float diff = channel_yaw->norm_input_dz() * SURFACE_DIFF_MAX * g2.surface_steer_gain;
 
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
-                                    constrain_float(thr + diff, 0.0f, 100.0f));
+                                    constrain_float(thr + diff, -100.0f, 100.0f));
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
-                                    constrain_float(thr - diff, 0.0f, 100.0f));
+                                    constrain_float(thr - diff, -100.0f, 100.0f));
 }
 
 // surface_exit - clean up on exit
