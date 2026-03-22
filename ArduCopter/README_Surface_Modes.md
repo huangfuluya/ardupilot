@@ -1,23 +1,75 @@
 # 四旋翼+船混合飞行器水面模式说明
 
-本文档介绍 ArduCopter 为四旋翼+船混合飞行器（quad+boat hybrid）新增的三种水面航行模式，以及相关参数和接线设置。
+本文档介绍 ArduCopter 为四旋翼+船混合飞行器（quad+boat hybrid）新增的三种水面航行模式，以及相关代码修改说明、参数和接线设置。
 
 ---
 
 ## 目录
 
-1. [硬件接线](#1-硬件接线)
-2. [地面站参数设置](#2-地面站参数设置)
-3. [飞行模式说明](#3-飞行模式说明)
+1. [代码修改说明](#1-代码修改说明)
+2. [硬件接线](#2-硬件接线)
+3. [地面站参数设置](#3-地面站参数设置)
+4. [飞行模式使用介绍](#4-飞行模式使用介绍)
    - [SURFACE（模式 29）](#surface模式-29)
    - [SURFACE\_LOITER（模式 31）](#surface_loiter模式-31)
    - [SURFACE\_AUTO（模式 32）](#surface_auto模式-32)
-4. [控制律说明](#4-控制律说明)
-5. [参数一览](#5-参数一览)
+5. [控制律说明](#5-控制律说明)
+6. [参数一览](#6-参数一览)
+7. [Pixhawk6X 自动编译工作流](#7-pixhawk6x-自动编译工作流)
 
 ---
 
-## 1. 硬件接线
+## 1. 代码修改说明
+
+本次修改在 ArduCopter 中新增了三种水面航行飞行模式，并添加了 Pixhawk6X 固件自动编译工作流。以下列出全部变更文件及改动内容。
+
+### 1.1 新增文件
+
+| 文件 | 说明 |
+|---|---|
+| `ArduCopter/mode_surface.cpp` | 新增 **SURFACE** 模式（模式编号 29）。飞手手动控制推进与转向，遥控器油门杆驱动基础推力，偏航杆驱动左右差动修正。四旋翼电机保持 `GROUND_IDLE` 怠速。 |
+| `ArduCopter/mode_surface_loiter.cpp` | 新增 **SURFACE\_LOITER** 模式（模式编号 31）。进入时以当前 GPS 位置为锁定目标，航向 P 控制器通过差动推力自动纠偏，油门按距离线性减速。飞手可用俯仰/横滚杆移动定点目标。 |
+| `ArduCopter/mode_surface_auto.cpp` | 新增 **SURFACE\_AUTO** 模式（模式编号 32）。读取 ArduCopter 任务列表，依次执行 `NAV_WAYPOINT` 和 `NAV_LOITER_UNLIM` 命令，最后一个航点完成后停止。 |
+| `ArduCopter/README_Surface_Modes.md` | 本说明文档。 |
+| `.github/workflows/build_pixhawk6x.yml` | 新增 Pixhawk6X / Pixhawk6X-bdshot 固件自动编译 GitHub Actions 工作流，详见[第 7 节](#7-pixhawk6x-自动编译工作流)。 |
+
+### 1.2 修改文件
+
+| 文件 | 修改内容 |
+|---|---|
+| `ArduCopter/mode.h` | 新增 `ModeSurface`、`ModeSurfaceLoiter`、`ModeSurfaceAuto` 类声明，均置于 `#if MODE_SURFACE_ENABLED` 编译守卫内。 |
+| `ArduCopter/Copter.h` | 新增三个模式成员变量 `mode_surface`、`mode_surface_loiter`、`mode_surface_auto`，并声明对应 `friend class`。 |
+| `ArduCopter/mode.cpp` | 在 `mode_from_mode_num()` 中新增模式编号 29/31/32 的分支，返回对应模式对象指针。 |
+| `ArduCopter/config.h` | 新增宏 `MODE_SURFACE_ENABLED`（非直升机机型默认启用）。 |
+| `ArduCopter/Parameters.cpp` | 在 `ParametersG2` 参数表中新增四个参数：`SURF_THR_GAIN`（索引 21）、`SURF_STEER_GAIN`（索引 22）、`SURF_AUTO_SPD`（索引 23）、`SURF_HEAD_KP`（索引 24）。 |
+| `ArduCopter/Parameters.h` | 新增四个参数成员变量声明（`AP_Float surface_thr_gain` 等）。 |
+
+### 1.3 关键设计变更
+
+**原设计**（单通道舵机转向）：
+```
+SERVOx_FUNCTION = 70  (Throttle)         → 单路油门
+SERVOx_FUNCTION = 26  (GroundSteering)   → 舵机转向，输出范围 ±4500 cdeg
+```
+
+**新设计**（双发差动推进）：
+```
+SERVOx_FUNCTION = 73  (ThrottleLeft)     → 左发电调，输出范围 0..100 %
+SERVOx_FUNCTION = 74  (ThrottleRight)    → 右发电调，输出范围 0..100 %
+
+left_motor  = clamp(throttle + diff, 0, 100)
+right_motor = clamp(throttle - diff, 0, 100)
+```
+
+差动修正量 `diff` 来源：
+- **SURFACE 模式**：遥控器偏航杆 × `SURF_STEER_GAIN`
+- **SURFACE\_LOITER / AUTO 模式**：航向 P 控制器输出 × `SURF_HEAD_KP`
+
+---
+
+---
+
+## 2. 硬件接线
 
 本模式使用**双发差动**方式控制航向，无舵机转向通道。
 
@@ -41,7 +93,7 @@
 
 ---
 
-## 2. 地面站参数设置
+## 3. 地面站参数设置
 
 进入任意水面模式前，请先确认以下参数：
 
@@ -55,7 +107,7 @@
 
 ---
 
-## 3. 飞行模式说明
+## 4. 飞行模式使用介绍
 
 ### SURFACE（模式 29）
 
@@ -88,7 +140,7 @@
 
 ---
 
-## 4. 控制律说明
+## 5. 控制律说明
 
 SURFACE\_LOITER 和 SURFACE\_AUTO 共用以下控制律：
 
@@ -118,7 +170,7 @@ dist ≤ R          →  throttle = 0                          （滑行停止�
 
 ---
 
-## 5. 参数一览
+## 6. 参数一览
 
 | 参数名 | 默认值 | 范围 | 单位 | 说明 |
 |---|---|---|---|---|
@@ -126,3 +178,59 @@ dist ≤ R          →  throttle = 0                          （滑行停止�
 | `SURF_STEER_GAIN` | 1.0 | 0.0 ~ 2.0 | — | SURFACE 模式偏航杆差动比例系数 |
 | `SURF_AUTO_SPD` | 50 | 0 ~ 100 | % | SURFACE\_LOITER/AUTO 巡航功率百分比 |
 | `SURF_HEAD_KP` | 1.0 | 0.1 ~ 3.0 | — | SURFACE\_LOITER/AUTO 航向 P 增益 |
+
+---
+
+## 7. Pixhawk6X 自动编译工作流
+
+### 7.1 工作流文件
+
+工作流位于 `.github/workflows/build_pixhawk6x.yml`。
+
+### 7.2 触发条件
+
+| 触发方式 | 说明 |
+|---|---|
+| `push` | 向任意分支推送代码时自动触发（忽略文档、测试脚本等无关路径） |
+| `pull_request` | 提交 PR 时自动触发 |
+| `workflow_dispatch` | 可在 GitHub Actions 页面手动触发 |
+
+### 7.3 编译矩阵
+
+每次触发均同时编译以下两个目标板：
+
+| 目标板 | 说明 |
+|---|---|
+| `Pixhawk6X` | 标准固件 |
+| `Pixhawk6X-bdshot` | 支持双向 DShot 的固件 |
+
+每个目标板均依次编译全部五种飞行器固件：`copter`、`plane`、`rover`、`sub`、`antennatracker`。
+
+### 7.4 编译环境
+
+| 项目 | 值 |
+|---|---|
+| 操作系统 | Ubuntu 22.04 |
+| 编译容器 | `ardupilot/ardupilot-dev-chibios:v0.1.3` |
+| 编译器 | arm-none-eabi-gcc 10 |
+| 编译加速 | ccache（按目标板分别缓存，加速后续增量编译） |
+
+### 7.5 固件下载
+
+每次编译完成后，`bin/` 目录下的所有固件文件会自动作为 GitHub Actions **Artifacts** 上传，保留 **30 天**。下载方法：
+
+1. 在 GitHub 仓库页面点击 **Actions** 标签页；
+2. 选择对应的工作流运行记录（`Build Pixhawk6X Firmware`）；
+3. 在页面底部 **Artifacts** 区域，点击 `Pixhawk6X-firmware` 或 `Pixhawk6X-bdshot-firmware` 即可下载 `.zip` 压缩包；
+4. 解压后获得 `.apj`（ArduPilot JSON 固件）、`.bin`（裸二进制）等格式文件，可直接用 Mission Planner / QGroundControl 烧录。
+
+### 7.6 并发控制
+
+同一分支/PR 上同时运行多个编译任务时，新任务会自动取消旧任务，节省 CI 资源：
+
+```yaml
+concurrency:
+  group: ci-Build Pixhawk6X Firmware-${{ github.ref }}
+  cancel-in-progress: true
+```
+
