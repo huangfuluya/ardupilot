@@ -286,6 +286,10 @@ for t in $CI_BUILD_TARGET; do
         $waf configure --board CubeNode-ETH
         $waf clean
         $waf AP_Periph
+        echo "Building Pixhawk6X-periph peripheral fw"
+        $waf configure --board Pixhawk6X-periph
+        $waf clean
+        $waf AP_Periph
         continue
     fi
 
