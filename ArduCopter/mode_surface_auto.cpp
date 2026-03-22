@@ -6,17 +6,19 @@
  * Surface Auto mode — mission waypoint navigation for quad+boat hybrid on water.
  *
  * The quad motors idle at GROUND_IDLE.  The boat's propulsion follows ArduCopter
- * mission NAV_WAYPOINT / NAV_LOITER_UNLIM commands:
- *   Boat throttle : SRV_Channel::k_throttle (0..100 %, SERVOx_FUNCTION = 70)
- *   Steering servo: SRV_Channel::k_steering (±4500 cdeg, SERVOx_FUNCTION = 26)
+ * mission NAV_WAYPOINT / NAV_LOITER_UNLIM commands via differential twin-engine mixing:
+ *   Left  motor : SRV_Channel::k_throttleLeft  (0..100 %, SERVOx_FUNCTION = 73)
+ *   Right motor : SRV_Channel::k_throttleRight (0..100 %, SERVOx_FUNCTION = 74)
  *
  * Only MAV_CMD_NAV_WAYPOINT and MAV_CMD_NAV_LOITER_UNLIM commands are acted on.
  * All other nav commands are skipped.  The mode stops when the last waypoint is
  * reached.  A NAV_LOITER_UNLIM waypoint causes the boat to loiter (on/off
  * throttle) at that position indefinitely.
  *
- * Heading controller (P):
- *   steer = wrap_PI(bearing_to_target - current_yaw) × (4500 / π/2) × SURF_HEAD_KP
+ * Heading controller (P) → differential mixing:
+ *   diff = wrap_PI(bearing - yaw) × (100 / π/2) × SURF_HEAD_KP
+ *   left_motor  = throttle + diff   (clamped 0..100)
+ *   right_motor = throttle - diff   (clamped 0..100)
  *
  * Throttle (distance ramp):
  *   • > 3×WPNAV_RADIUS  : SURF_AUTO_SPD %
@@ -24,8 +26,8 @@
  *   • ≤ WPNAV_RADIUS    : 0 (coast to rest / natural loiter)
  */
 
-// Scaled output limit for the steering servo (centidegrees)
-static constexpr float SURFACE_STEERING_MAX = 4500.0f;
+// Maximum differential thrust correction (0..100 %)
+static constexpr float SURFACE_DIFF_MAX = 100.0f;
 
 // surface_auto_init - validate mission and load first waypoint
 bool ModeSurfaceAuto::init(bool ignore_checks)
@@ -39,11 +41,11 @@ bool ModeSurfaceAuto::init(bool ignore_checks)
         return false;
     }
 
-    SRV_Channels::set_angle(SRV_Channel::k_throttle, 100);
-    SRV_Channels::set_angle(SRV_Channel::k_steering, SURFACE_STEERING_MAX);
+    SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  100);
+    SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 100);
 
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0f);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, 0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 
     _mission_complete = false;
     _loiter_at_target = false;
@@ -78,8 +80,8 @@ void ModeSurfaceAuto::run()
     attitude_control->set_throttle_out(0.0f, false, g.throttle_filt);
 
     if (_mission_complete) {
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0f);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_steering, 0.0f);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
         return;
     }
 
@@ -90,8 +92,8 @@ void ModeSurfaceAuto::run()
     if (dist_m <= accept_m && !_loiter_at_target) {
         if (!advance_to_next_wp(_cmd_index + 1)) {
             // No more waypoints — coast to a stop
-            SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0f);
-            SRV_Channels::set_output_scaled(SRV_Channel::k_steering, 0.0f);
+            SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+            SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
             return;
         }
     }
@@ -99,9 +101,9 @@ void ModeSurfaceAuto::run()
     // --- Bearing-based navigation to current waypoint ---
     const float bearing_rad     = copter.current_loc.get_bearing(_wp_target);
     const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw_rad());
-    const float steer = constrain_float(
-        heading_err_rad * (SURFACE_STEERING_MAX / M_PI_2) * g2.surface_head_kp,
-        -SURFACE_STEERING_MAX, SURFACE_STEERING_MAX);
+    const float diff = constrain_float(
+        heading_err_rad * (SURFACE_DIFF_MAX / M_PI_2) * g2.surface_head_kp,
+        -SURFACE_DIFF_MAX, SURFACE_DIFF_MAX);
 
     // Throttle: ramp down within 3× acceptance radius, coast inside
     const float slow_m = 3.0f * accept_m;
@@ -112,15 +114,17 @@ void ModeSurfaceAuto::run()
         thr = g2.surface_auto_spd * (dist_m - accept_m) / (slow_m - accept_m);
     }
 
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, constrain_float(thr, 0.0f, 100.0f));
-    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, steer);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
+                                    constrain_float(thr + diff, 0.0f, 100.0f));
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
+                                    constrain_float(thr - diff, 0.0f, 100.0f));
 }
 
 // surface_auto_exit - neutral outputs on exit
 void ModeSurfaceAuto::exit()
 {
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0f);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, 0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 }
 
 // advance_to_next_wp - scan the mission from start_idx for the next

@@ -19,23 +19,25 @@
 
 ## 1. 硬件接线
 
-### 船用电调（油门通道）
+本模式使用**双发差动**方式控制航向，无舵机转向通道。
+
+### 左侧电调（左发）
 
 | 项目 | 值 |
 |---|---|
-| 舵机功能 | `SERVOx_FUNCTION = 70`（Throttle） |
+| 舵机功能 | `SERVOx_FUNCTION = 73`（ThrottleLeft） |
 | 输出范围 | 0 ~ 100（功率百分比） |
-| 说明 | 对应 `SRV_Channel::k_throttle`，仅正向推力 |
+| 说明 | 对应 `SRV_Channel::k_throttleLeft` |
 
-### 舵机/转向通道
+### 右侧电调（右发）
 
 | 项目 | 值 |
 |---|---|
-| 舵机功能 | `SERVOx_FUNCTION = 26`（GroundSteering） |
-| 输出范围 | −4500 ~ +4500 centideg（±45°） |
-| 说明 | 对应 `SRV_Channel::k_steering`，负值左转，正值右转 |
+| 舵机功能 | `SERVOx_FUNCTION = 74`（ThrottleRight） |
+| 输出范围 | 0 ~ 100（功率百分比） |
+| 说明 | 对应 `SRV_Channel::k_throttleRight` |
 
-> 将上述两个功能分配到对应的 SERVO 通道（例如 SERVO5、SERVO6），确保舵机行程和方向正确。
+> 将上述两个功能分配到对应的 SERVO 通道（例如 SERVO5、SERVO6），确保左右电机方向与机体左右一致。
 
 ---
 
@@ -46,8 +48,8 @@
 | 参数 | 推荐值 | 说明 |
 |---|---|---|
 | `WPNAV_RADIUS` | 200 cm（2 m） | 航点到达半径；决定减速开始距离 |
-| `SURF_THR_GAIN` | 1.0 | SURFACE 模式油门杆比例系数 |
-| `SURF_STEER_GAIN` | 1.0 | SURFACE 模式偏航杆转向比例系数 |
+| `SURF_THR_GAIN` | 1.0 | SURFACE 模式油门杆基础推力比例系数 |
+| `SURF_STEER_GAIN` | 1.0 | SURFACE 模式偏航杆差动比例系数 |
 | `SURF_AUTO_SPD` | 50 % | SURFACE\_LOITER / SURFACE\_AUTO 巡航功率 |
 | `SURF_HEAD_KP` | 1.0 | SURFACE\_LOITER / SURFACE\_AUTO 航向 P 增益 |
 
@@ -59,14 +61,14 @@
 
 **手动水面航行**。四旋翼电机保持 `GROUND_IDLE` 怠速，姿态控制器维持机体水平；飞手通过遥控器直接控制船的推进与转向：
 
-- **油门杆（CH3）** → 船推力（0 ~ 100%），通过 `SURF_THR_GAIN` 缩放。
-- **偏航杆（CH4）** → 船转向（±4500 centideg），通过 `SURF_STEER_GAIN` 缩放。
+- **油门杆（CH3）** → 基础推力（0 ~ 100%），通过 `SURF_THR_GAIN` 缩放，左右等量分配。
+- **偏航杆（CH4）** → 差动修正量（±100%），通过 `SURF_STEER_GAIN` 缩放，左加右减实现转向。
 
 切换到其他飞行模式后，输出自动归零，防止意外移动。
 
 ### SURFACE\_LOITER（模式 31）
 
-**GPS 定点水面保持**。进入时以当前 GPS 位置为锁定目标，由自动航向 P 控制器驱动舵机，油门按距离线性减速：
+**GPS 定点水面保持**。进入时以当前 GPS 位置为锁定目标，由自动航向 P 控制器通过差动推力纠偏，油门按距离线性减速：
 
 - 飞手可通过俯仰/横滚杆（体坐标系，自动旋转为 NE 方向）以 2 m/s 速率移动定点目标。
 - 到达目标圆内（`WPNAV_RADIUS`）时油门归零，依靠惯性自然停船。
@@ -90,15 +92,18 @@
 
 SURFACE\_LOITER 和 SURFACE\_AUTO 共用以下控制律：
 
-### 航向 P 控制器
+### 航向 P 控制器 → 差动混控
 
 ```
 heading_err = wrap_PI(bearing_to_target - current_yaw)   [rad]
-steer       = heading_err × (4500 / (π/2)) × SURF_HEAD_KP  [centideg]
-steer       = clamp(steer, -4500, +4500)
+diff        = heading_err × (100 / (π/2)) × SURF_HEAD_KP  [%]
+diff        = clamp(diff, -100, +100)
+
+left_motor  = clamp(throttle + diff, 0, 100)
+right_motor = clamp(throttle - diff, 0, 100)
 ```
 
-- `SURF_HEAD_KP = 1.0`：90° 航向误差对应满舵（±4500 centideg）。
+- `SURF_HEAD_KP = 1.0`：90° 航向误差对应 100% 差动（一侧满功率，另一侧归零）。
 - 增大 `SURF_HEAD_KP` 可使转向更激进；如船体出现蛇行振荡，应适当减小。
 
 ### 油门距离渐变
@@ -117,7 +122,7 @@ dist ≤ R          →  throttle = 0                          （滑行停止�
 
 | 参数名 | 默认值 | 范围 | 单位 | 说明 |
 |---|---|---|---|---|
-| `SURF_THR_GAIN` | 1.0 | 0.0 ~ 2.0 | — | SURFACE 模式油门杆比例系数 |
-| `SURF_STEER_GAIN` | 1.0 | 0.0 ~ 2.0 | — | SURFACE 模式偏航杆转向比例系数 |
+| `SURF_THR_GAIN` | 1.0 | 0.0 ~ 2.0 | — | SURFACE 模式油门杆基础推力比例系数 |
+| `SURF_STEER_GAIN` | 1.0 | 0.0 ~ 2.0 | — | SURFACE 模式偏航杆差动比例系数 |
 | `SURF_AUTO_SPD` | 50 | 0 ~ 100 | % | SURFACE\_LOITER/AUTO 巡航功率百分比 |
 | `SURF_HEAD_KP` | 1.0 | 0.1 ~ 3.0 | — | SURFACE\_LOITER/AUTO 航向 P 增益 |

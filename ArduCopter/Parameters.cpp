@@ -1172,15 +1172,15 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
 #if MODE_SURFACE_ENABLED
     // @Param: SURF_THR_GAIN
     // @DisplayName: Surface mode throttle gain
-    // @Description: Scaling factor applied to the throttle stick output when in Surface mode (boat navigation). Output drives SERVOx_FUNCTION=70 (Throttle) in the range 0 to 100 power percent. A value of 1.0 means full stick maps to 100% boat throttle.
+    // @Description: Scaling factor applied to the throttle stick in Surface mode. Output is the base throttle mixed equally to both motors (SERVOx_FUNCTION=73 left, 74 right), 0 to 100 percent. Value of 1.0 maps full stick to 100% throttle.
     // @Range: 0.0 2.0
     // @Increment: 0.1
     // @User: Standard
     AP_GROUPINFO("SURF_THR_GAIN", 21, ParametersG2, surface_thr_gain, 1.0f),
 
     // @Param: SURF_STEER_GAIN
-    // @DisplayName: Surface mode steering gain
-    // @Description: Scaling factor applied to the yaw stick output when in Surface mode (boat navigation). Output drives SERVOx_FUNCTION=26 (GroundSteering) in the range -4500 to +4500 centidegrees (i.e. ±45 degrees). A value of 1.0 means full stick maps to ±45 degrees of steering.
+    // @DisplayName: Surface mode differential steering gain
+    // @Description: Scaling factor applied to the yaw stick in Surface mode for differential twin-engine control (SERVOx_FUNCTION=73/74). Value of 1.0 maps full yaw stick to 100% differential (one motor full, other at zero).
     // @Range: 0.0 2.0
     // @Increment: 0.1
     // @User: Standard
@@ -1188,7 +1188,7 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
 
     // @Param: SURF_AUTO_SPD
     // @DisplayName: Surface auto/loiter cruise power
-    // @Description: Cruise power percentage (0-100) applied to the boat throttle when navigating in SURFACE_LOITER or SURFACE_AUTO mode. The throttle is ramped down to zero as the boat approaches its destination within 3x the WPNAV_RADIUS.
+    // @Description: Base throttle percentage (0-100) for both motors in SURFACE_LOITER and SURFACE_AUTO. Ramped down to zero as the boat approaches within 3x WPNAV_RADIUS.
     // @Range: 0 100
     // @Increment: 5
     // @Units: %
@@ -1197,7 +1197,7 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
 
     // @Param: SURF_HEAD_KP
     // @DisplayName: Surface auto/loiter heading P gain
-    // @Description: Proportional gain for the heading controller used in SURFACE_LOITER and SURFACE_AUTO modes. A value of 1.0 maps a 90-degree heading error to full steering lock (4500 centidegrees). Increase for more aggressive turning; decrease if the boat oscillates.
+    // @Description: Proportional gain for differential thrust heading control in SURFACE_LOITER and SURFACE_AUTO. Value of 1.0 maps a 90-degree error to 100% differential. Increase for faster turns; decrease if the boat oscillates.
     // @Range: 0.1 3.0
     // @Increment: 0.1
     // @User: Standard

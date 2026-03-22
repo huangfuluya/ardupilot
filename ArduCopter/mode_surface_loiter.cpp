@@ -5,16 +5,18 @@
 /*
  * Surface Loiter mode — GPS position hold for quad+boat hybrid vehicle on water.
  *
- * The quad motors idle at GROUND_IDLE while the boat's propulsion holds position:
- *   Boat throttle : SRV_Channel::k_throttle (0..100 %, SERVOx_FUNCTION = 70)
- *   Steering servo: SRV_Channel::k_steering (±4500 cdeg, SERVOx_FUNCTION = 26)
+ * The quad motors idle at GROUND_IDLE while the boat's propulsion holds position
+ * using differential twin-engine mixing:
+ *   Left  motor : SRV_Channel::k_throttleLeft  (0..100 %, SERVOx_FUNCTION = 73)
+ *   Right motor : SRV_Channel::k_throttleRight (0..100 %, SERVOx_FUNCTION = 74)
  *
  * On entry the loiter target is set to the current GPS position.  The pilot
  * can shift the target with roll/pitch sticks (body-frame, rotated to NE).
  *
- * Heading controller (P):
- *   steer = wrap_PI(bearing_to_target - current_yaw) × (4500 / π/2) × SURF_HEAD_KP
- *   clamped to ±4500 centidegrees.
+ * Heading controller (P) → differential mixing:
+ *   diff = wrap_PI(bearing - yaw) × (100 / π/2) × SURF_HEAD_KP
+ *   left_motor  = throttle + diff   (clamped 0..100)
+ *   right_motor = throttle - diff   (clamped 0..100)
  *
  * Throttle (distance ramp):
  *   • > 3×WPNAV_RADIUS  : full SURF_AUTO_SPD %
@@ -22,8 +24,8 @@
  *   • ≤ WPNAV_RADIUS    : 0 (coast to rest inside target circle)
  */
 
-// Scaled output limit for the steering servo (centidegrees)
-static constexpr float SURFACE_STEERING_MAX = 4500.0f;
+// Maximum differential thrust correction (0..100 %)
+static constexpr float SURFACE_DIFF_MAX = 100.0f;
 // Target-move rate when pilot applies roll/pitch sticks (m/s)
 static constexpr float SURF_LOITER_MOVE_RATE_MS = 2.0f;
 
@@ -34,12 +36,12 @@ bool ModeSurfaceLoiter::init(bool ignore_checks)
         return false;
     }
 
-    SRV_Channels::set_angle(SRV_Channel::k_throttle, 100);
-    SRV_Channels::set_angle(SRV_Channel::k_steering, SURFACE_STEERING_MAX);
+    SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  100);
+    SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 100);
 
     // Neutral outputs on entry
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0f);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, 0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 
     _loiter_target = copter.current_loc;
     return true;
@@ -73,11 +75,11 @@ void ModeSurfaceLoiter::run()
     const float bearing_rad = copter.current_loc.get_bearing(_loiter_target);
     const float dist_m      = copter.current_loc.get_distance(_loiter_target);
 
-    // Heading P-controller: ±π/2 error → ±full steer at KP = 1.0
+    // Heading P-controller → differential correction: ±π/2 error → ±100% diff at KP=1.0
     const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw_rad());
-    const float steer = constrain_float(
-        heading_err_rad * (SURFACE_STEERING_MAX / M_PI_2) * g2.surface_head_kp,
-        -SURFACE_STEERING_MAX, SURFACE_STEERING_MAX);
+    const float diff = constrain_float(
+        heading_err_rad * (SURFACE_DIFF_MAX / M_PI_2) * g2.surface_head_kp,
+        -SURFACE_DIFF_MAX, SURFACE_DIFF_MAX);
 
     // Throttle: ramp down within 3× acceptance radius, coast inside
     const float accept_m = wp_nav->get_wp_radius_m();
@@ -89,15 +91,17 @@ void ModeSurfaceLoiter::run()
         thr = g2.surface_auto_spd * (dist_m - accept_m) / (slow_m - accept_m);
     }
 
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, constrain_float(thr, 0.0f, 100.0f));
-    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, steer);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
+                                    constrain_float(thr + diff, 0.0f, 100.0f));
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
+                                    constrain_float(thr - diff, 0.0f, 100.0f));
 }
 
 // surface_loiter_exit - neutral outputs on exit
 void ModeSurfaceLoiter::exit()
 {
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0f);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, 0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 }
 
 // update_loiter_target - pilot roll/pitch sticks offset the loiter target
