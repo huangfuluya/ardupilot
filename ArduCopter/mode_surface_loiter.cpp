@@ -74,7 +74,7 @@ void ModeSurfaceLoiter::run()
     const float dist_m      = copter.current_loc.get_distance(_loiter_target);
 
     // Heading P-controller: ±π/2 error → ±full steer at KP = 1.0
-    const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw());
+    const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw_rad());
     const float steer = constrain_float(
         heading_err_rad * (SURFACE_STEERING_MAX / M_PI_2) * g2.surface_head_kp,
         -SURFACE_STEERING_MAX, SURFACE_STEERING_MAX);
@@ -111,7 +111,7 @@ void ModeSurfaceLoiter::update_loiter_target()
     }
 
     const float dt  = copter.scheduler.get_loop_period_s();
-    const float yaw = ahrs.get_yaw();
+    const float yaw = ahrs.get_yaw_rad();
 
     // Rotate stick input from body frame into NE frame then offset the target
     const float north = (fwd * cosf(yaw) - rt * sinf(yaw)) * SURF_LOITER_MOVE_RATE_MS * dt;

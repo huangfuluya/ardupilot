@@ -98,7 +98,7 @@ void ModeSurfaceAuto::run()
 
     // --- Bearing-based navigation to current waypoint ---
     const float bearing_rad     = copter.current_loc.get_bearing(_wp_target);
-    const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw());
+    const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw_rad());
     const float steer = constrain_float(
         heading_err_rad * (SURFACE_STEERING_MAX / M_PI_2) * g2.surface_head_kp,
         -SURFACE_STEERING_MAX, SURFACE_STEERING_MAX);
