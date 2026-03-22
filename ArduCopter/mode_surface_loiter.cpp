@@ -54,6 +54,15 @@ bool ModeSurfaceLoiter::init(bool ignore_checks)
 // should be called at 100 Hz or more
 void ModeSurfaceLoiter::run()
 {
+    // While disarmed reset ramp state and skip boat output.
+    // Mode::output_to_motors() already forces both channels to neutral PWM;
+    // resetting _thr_left/_thr_right here ensures arming always starts from 0.
+    if (!motors->armed()) {
+        _thr_left  = 0.0f;
+        _thr_right = 0.0f;
+        return;
+    }
+
     // Quad motors stay at ground idle — no thrust from rotors
     motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
 

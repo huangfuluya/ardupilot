@@ -1172,7 +1172,7 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
 #if MODE_SURFACE_ENABLED
     // @Param: SURF_THR_GAIN
     // @DisplayName: Surface mode throttle gain
-    // @Description: Scaling factor applied to the throttle stick in Surface mode. Output is the base throttle mixed equally to both motors (SERVOx_FUNCTION=73 left, 74 right), 0 to 100 percent. Value of 1.0 maps full stick to 100% throttle.
+    // @Description: Scaling factor applied to the throttle stick in Surface mode. Output is the base throttle mixed equally to both motors (SERVOx_FUNCTION=73 left, 74 right), -100 to +100 percent (negative = reverse). Value of 1.0 maps full stick deflection to 100% throttle.
     // @Range: 0.0 2.0
     // @Increment: 0.1
     // @User: Standard
