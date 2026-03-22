@@ -1202,6 +1202,15 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
     // @Increment: 0.1
     // @User: Standard
     AP_GROUPINFO("SURF_HEAD_KP", 24, ParametersG2, surface_head_kp, 1.0f),
+
+    // @Param: SURF_RAMP_SPD
+    // @DisplayName: Surface motor ramp speed
+    // @Description: Maximum rate of change for boat motor outputs in Surface modes (% per second). Lower values give gentler acceleration and deceleration. Set to 0 to track target immediately without rate limiting.
+    // @Range: 0 200
+    // @Increment: 5
+    // @Units: %/s
+    // @User: Standard
+    AP_GROUPINFO("SURF_RAMP_SPD", 25, ParametersG2, surface_ramp_spd, 50.0f),
 #endif
 
     // ID 62 is reserved for the AP_SUBGROUPEXTENSION

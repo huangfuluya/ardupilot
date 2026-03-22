@@ -46,6 +46,9 @@ bool ModeSurfaceAuto::init(bool ignore_checks)
     SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  100);
     SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 100);
 
+    // Neutral outputs on entry; reset ramp state
+    _thr_left  = 0.0f;
+    _thr_right = 0.0f;
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 
@@ -81,50 +84,62 @@ void ModeSurfaceAuto::run()
     attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw_rad(0.0f, 0.0f, 0.0f);
     attitude_control->set_throttle_out(0.0f, false, g.throttle_filt);
 
-    if (_mission_complete) {
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
-        return;
-    }
+    // Compute desired motor targets (default to 0 = coast / stop)
+    float tgt_left  = 0.0f;
+    float tgt_right = 0.0f;
 
-    const float dist_m   = copter.current_loc.get_distance(_wp_target);
-    const float accept_m = wp_nav->get_wp_radius_m();
+    if (!_mission_complete) {
+        const float dist_m   = copter.current_loc.get_distance(_wp_target);
+        const float accept_m = wp_nav->get_wp_radius_m();
 
-    // Inside acceptance radius: advance to next waypoint (unless loitering)
-    if (dist_m <= accept_m && !_loiter_at_target) {
-        if (!advance_to_next_wp(_cmd_index + 1)) {
-            // No more waypoints — coast to a stop
-            SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
-            SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
-            return;
+        // Inside acceptance radius: advance to next waypoint (unless loitering)
+        bool nav_valid = true;
+        if (dist_m <= accept_m && !_loiter_at_target) {
+            nav_valid = advance_to_next_wp(_cmd_index + 1);
+        }
+
+        if (nav_valid) {
+            // --- Bearing-based navigation to current waypoint ---
+            const float bearing_rad     = copter.current_loc.get_bearing(_wp_target);
+            const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw_rad());
+            const float diff = constrain_float(
+                heading_err_rad * (SURFACE_DIFF_MAX / M_PI_2) * g2.surface_head_kp,
+                -SURFACE_DIFF_MAX, SURFACE_DIFF_MAX);
+
+            // Throttle: ramp down within 3× acceptance radius, coast inside
+            const float slow_m = 3.0f * accept_m;
+            float thr = 0.0f;
+            if (dist_m > slow_m) {
+                thr = g2.surface_auto_spd;
+            } else if (dist_m > accept_m) {
+                thr = g2.surface_auto_spd * (dist_m - accept_m) / (slow_m - accept_m);
+            }
+
+            tgt_left  = constrain_float(thr + diff, -100.0f, 100.0f);
+            tgt_right = constrain_float(thr - diff, -100.0f, 100.0f);
         }
     }
 
-    // --- Bearing-based navigation to current waypoint ---
-    const float bearing_rad     = copter.current_loc.get_bearing(_wp_target);
-    const float heading_err_rad = wrap_PI(bearing_rad - ahrs.get_yaw_rad());
-    const float diff = constrain_float(
-        heading_err_rad * (SURFACE_DIFF_MAX / M_PI_2) * g2.surface_head_kp,
-        -SURFACE_DIFF_MAX, SURFACE_DIFF_MAX);
-
-    // Throttle: ramp down within 3× acceptance radius, coast inside
-    const float slow_m = 3.0f * accept_m;
-    float thr = 0.0f;
-    if (dist_m > slow_m) {
-        thr = g2.surface_auto_spd;
-    } else if (dist_m > accept_m) {
-        thr = g2.surface_auto_spd * (dist_m - accept_m) / (slow_m - accept_m);
+    // Apply ramp rate limit (SURF_RAMP_SPD %/s); 0 = no limiting
+    const float ramp = g2.surface_ramp_spd;
+    if (ramp > 0.0f) {
+        const float max_delta = ramp * copter.scheduler.get_loop_period_s();
+        _thr_left  += constrain_float(tgt_left  - _thr_left,  -max_delta, max_delta);
+        _thr_right += constrain_float(tgt_right - _thr_right, -max_delta, max_delta);
+    } else {
+        _thr_left  = tgt_left;
+        _thr_right = tgt_right;
     }
 
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
-                                    constrain_float(thr + diff, -100.0f, 100.0f));
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
-                                    constrain_float(thr - diff, -100.0f, 100.0f));
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  _thr_left);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, _thr_right);
 }
 
 // surface_auto_exit - neutral outputs on exit
 void ModeSurfaceAuto::exit()
 {
+    _thr_left  = 0.0f;
+    _thr_right = 0.0f;
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 }

@@ -41,8 +41,8 @@
 | `ArduCopter/Copter.h` | 新增三个模式成员变量 `mode_surface`、`mode_surface_loiter`、`mode_surface_auto`，并声明对应 `friend class`。 |
 | `ArduCopter/mode.cpp` | 在 `mode_from_mode_num()` 中新增模式编号 29/31/32 的分支，返回对应模式对象指针。在 `Mode::output_to_motors()` 中新增：非水面模式时将 `k_throttleLeft`/`k_throttleRight` 锁定在中位（1500 µs），防止可逆 ESC 在旋翼飞行期间意外转动。 |
 | `ArduCopter/config.h` | 新增宏 `MODE_SURFACE_ENABLED`（非直升机机型默认启用）。 |
-| `ArduCopter/Parameters.cpp` | 在 `ParametersG2` 参数表中新增四个参数：`SURF_THR_GAIN`（索引 21）、`SURF_STEER_GAIN`（索引 22）、`SURF_AUTO_SPD`（索引 23）、`SURF_HEAD_KP`（索引 24）。 |
-| `ArduCopter/Parameters.h` | 新增四个参数成员变量声明（`AP_Float surface_thr_gain` 等）。 |
+| `ArduCopter/Parameters.cpp` | 在 `ParametersG2` 参数表中新增五个参数：`SURF_THR_GAIN`（索引 21）、`SURF_STEER_GAIN`（索引 22）、`SURF_AUTO_SPD`（索引 23）、`SURF_HEAD_KP`（索引 24）、`SURF_RAMP_SPD`（索引 25）。 |
+| `ArduCopter/Parameters.h` | 新增五个参数成员变量声明（`AP_Float surface_thr_gain` 等）。 |
 
 ### 1.3 关键设计变更
 
@@ -112,6 +112,7 @@ right_motor = clamp(throttle - diff, -100, +100)
 | `SURF_STEER_GAIN` | 1.0 | SURFACE 模式偏航杆差动比例系数 |
 | `SURF_AUTO_SPD` | 50 % | SURFACE\_LOITER / SURFACE\_AUTO 巡航功率 |
 | `SURF_HEAD_KP` | 1.0 | SURFACE\_LOITER / SURFACE\_AUTO 航向 P 增益 |
+| `SURF_RAMP_SPD` | 50 %/s | 船用电机输出最大变化速率（%/秒）；0 = 不限制。调小可实现更柔和的加减速 |
 
 ---
 

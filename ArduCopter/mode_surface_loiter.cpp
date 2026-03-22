@@ -40,7 +40,9 @@ bool ModeSurfaceLoiter::init(bool ignore_checks)
     SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  100);
     SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 100);
 
-    // Neutral outputs on entry
+    // Neutral outputs on entry; reset ramp state
+    _thr_left  = 0.0f;
+    _thr_right = 0.0f;
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 
@@ -92,15 +94,30 @@ void ModeSurfaceLoiter::run()
         thr = g2.surface_auto_spd * (dist_m - accept_m) / (slow_m - accept_m);
     }
 
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,
-                                    constrain_float(thr + diff, -100.0f, 100.0f));
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight,
-                                    constrain_float(thr - diff, -100.0f, 100.0f));
+    // Target outputs before rate limiting
+    const float tgt_left  = constrain_float(thr + diff, -100.0f, 100.0f);
+    const float tgt_right = constrain_float(thr - diff, -100.0f, 100.0f);
+
+    // Apply ramp rate limit (SURF_RAMP_SPD %/s); 0 = no limiting
+    const float ramp = g2.surface_ramp_spd;
+    if (ramp > 0.0f) {
+        const float max_delta = ramp * copter.scheduler.get_loop_period_s();
+        _thr_left  += constrain_float(tgt_left  - _thr_left,  -max_delta, max_delta);
+        _thr_right += constrain_float(tgt_right - _thr_right, -max_delta, max_delta);
+    } else {
+        _thr_left  = tgt_left;
+        _thr_right = tgt_right;
+    }
+
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  _thr_left);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, _thr_right);
 }
 
 // surface_loiter_exit - neutral outputs on exit
 void ModeSurfaceLoiter::exit()
 {
+    _thr_left  = 0.0f;
+    _thr_right = 0.0f;
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
     SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
 }

@@ -2178,6 +2178,10 @@ public:
 protected:
     const char *name() const override { return "SURFACE"; }
     const char *name4() const override { return "SURF"; }
+
+private:
+    float _thr_left;   // current (rate-limited) left  motor output (-100..+100)
+    float _thr_right;  // current (rate-limited) right motor output (-100..+100)
 };
 
 // GPS position-hold on the water surface (loiter for boat)
@@ -2203,6 +2207,8 @@ protected:
 
 private:
     Location _loiter_target;
+    float _thr_left;   // current (rate-limited) left  motor output (-100..+100)
+    float _thr_right;  // current (rate-limited) right motor output (-100..+100)
     void update_loiter_target();
 };
 
@@ -2232,6 +2238,8 @@ private:
     uint16_t _cmd_index;
     bool _mission_complete;
     bool _loiter_at_target;
+    float _thr_left;   // current (rate-limited) left  motor output (-100..+100)
+    float _thr_right;  // current (rate-limited) right motor output (-100..+100)
     bool advance_to_next_wp(uint16_t start_idx);
 };
 #endif  // MODE_SURFACE_ENABLED
