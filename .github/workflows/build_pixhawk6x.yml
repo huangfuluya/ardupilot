@@ -1,0 +1,96 @@
+name: Build Pixhawk6X firmware
+
+# Trigger on every push / pull-request that touches flight-code, and allow
+# manual dispatch from the Actions UI.
+on:
+  push:
+    paths-ignore:
+      - 'libraries/AP_HAL_Linux/**'
+      - 'libraries/AP_HAL_ESP32/**'
+      - 'libraries/AP_HAL_SITL/**'
+      - 'Tools/autotest/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/test_environment.yml'
+      - '.vscode/**'
+      - 'Vagrantfile'
+      - 'Makefile'
+
+  pull_request:
+    paths-ignore:
+      - 'libraries/AP_HAL_Linux/**'
+      - 'libraries/AP_HAL_ESP32/**'
+      - 'libraries/AP_HAL_SITL/**'
+      - 'Tools/autotest/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/test_environment.yml'
+      - '.vscode/**'
+      - 'Vagrantfile'
+      - 'Makefile'
+
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.vehicle }} / Pixhawk6X
+    runs-on: ubuntu-22.04
+    container: ardupilot/ardupilot-dev-chibios:v0.1.3
+
+    strategy:
+      fail-fast: false
+      matrix:
+        vehicle: [copter, plane, rover, sub, antennatracker]
+
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
+
+      # ── ccache ──────────────────────────────────────────────────────────────
+      - name: Prepare ccache timestamp
+        id: ccache_ts
+        run: echo "timestamp=$(date -u +%F-%T)" >> $GITHUB_OUTPUT
+
+      - name: Restore / save ccache
+        uses: actions/cache@v5
+        with:
+          path: ~/.ccache
+          key: pixhawk6x-${{ matrix.vehicle }}-${{ steps.ccache_ts.outputs.timestamp }}
+          restore-keys: pixhawk6x-${{ matrix.vehicle }}-
+
+      - name: Configure ccache
+        run: . .github/workflows/ccache.env
+
+      # ── build ────────────────────────────────────────────────────────────────
+      - name: Configure waf for Pixhawk6X
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          PATH="/usr/lib/ccache:/opt/gcc-arm-none-eabi-10/bin:$PATH"
+          ./waf configure --board Pixhawk6X
+
+      - name: Build ${{ matrix.vehicle }}
+        run: |
+          PATH="/usr/lib/ccache:/opt/gcc-arm-none-eabi-10/bin:$PATH"
+          ./waf ${{ matrix.vehicle }}
+          ccache -s
+          ccache -z
+
+      # ── upload artefacts ─────────────────────────────────────────────────────
+      - name: Upload firmware artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          # Artefact name shown in the Actions UI, e.g. "firmware-copter"
+          name: firmware-${{ matrix.vehicle }}
+          # Waf puts built firmware under build/<board>/bin/
+          path: |
+            build/Pixhawk6X/bin/*.apj
+            build/Pixhawk6X/bin/*.hex
+            build/Pixhawk6X/bin/*.elf
+          if-no-files-found: error
+          retention-days: 30
