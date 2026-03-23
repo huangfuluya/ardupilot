@@ -30,9 +30,9 @@ static constexpr float SURFACE_DIFF_MAX = 100.0f;
 // surface_init - initialise surface controller
 bool ModeSurface::init(bool ignore_checks)
 {
-    // Refuse to enter a boat mode while flying in multirotor mode
-    if (!copter.ap.land_complete && !ignore_checks) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "Surface: not available while airborne");
+    // Refuse to enter a boat mode while armed in multirotor mode
+    if (motors->armed() && !ignore_checks) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "Surface: disarm before switching to surface mode");
         return false;
     }
 
