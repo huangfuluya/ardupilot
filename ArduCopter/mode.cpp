@@ -152,6 +152,15 @@ Mode *Copter::mode_from_mode_num(const Mode::Number mode)
             return &mode_turtle;
 #endif
 
+#if MODE_SURFACE_ENABLED
+        case Mode::Number::SURFACE:
+            return &mode_surface;
+        case Mode::Number::SURFACE_LOITER:
+            return &mode_surface_loiter;
+        case Mode::Number::SURFACE_AUTO:
+            return &mode_surface_auto;
+#endif
+
         default:
             break;
     }
@@ -1006,6 +1015,25 @@ float Mode::get_avoidance_adjusted_climbrate_ms(float target_rate_ms)
 // send output to the motors, can be overridden by subclasses
 void Mode::output_to_motors()
 {
+#if MODE_SURFACE_ENABLED
+    // Boat channels (k_throttleLeft / k_throttleRight) must be held at neutral
+    // (scaled 0 → 1500 µs) whenever:
+    //   • the active mode is not a surface mode (i.e. vehicle is flying as a
+    //     multirotor), OR
+    //   • the vehicle is disarmed — even inside a surface mode.
+    // This prevents bidirectional/reversible ESCs from spinning unexpectedly
+    // during rotor flight or while the vehicle is unarmed on the water.
+    const Number num = mode_number();
+    const bool is_surface_mode = (num == Number::SURFACE ||
+                                  num == Number::SURFACE_LOITER ||
+                                  num == Number::SURFACE_AUTO);
+    if (!is_surface_mode || !motors->armed()) {
+        SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  100);
+        SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 100);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_throttleLeft,  0.0f);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_throttleRight, 0.0f);
+    }
+#endif
     motors->output();
 }
 

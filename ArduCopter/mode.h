@@ -101,8 +101,12 @@ public:
         AUTOROTATE =   26,  // Autonomous autorotation
         AUTO_RTL =     27,  // Auto RTL, this is not a true mode, AUTO will report as this mode if entered to perform a DO_LAND_START Landing sequence
         TURTLE =       28,  // Flip over after crash
+        SURFACE =      29,  // Unmanned surface vessel (boat) navigation for quad+boat hybrid
 
         // Mode number 30 reserved for "offboard" for external/lua control.
+
+        SURFACE_LOITER = 31,  // GPS position hold on water for quad+boat hybrid
+        SURFACE_AUTO   = 32,  // Mission waypoint navigation on water for quad+boat hybrid
 
         // Mode number 127 reserved for the "drone show mode" in the Skybrush
         // fork at https://github.com/skybrush-io/ardupilot
@@ -2152,3 +2156,90 @@ private:
 
 };
 #endif
+
+#if MODE_SURFACE_ENABLED
+class ModeSurface : public Mode {
+
+public:
+    // inherit constructor
+    using Mode::Mode;
+    Number mode_number() const override { return Number::SURFACE; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+    void exit() override;
+
+    bool is_autopilot() const override { return false; }
+    bool requires_position() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(AP_Arming::Method method) const override { return true; }
+    bool allows_save_trim() const override { return false; }
+
+protected:
+    const char *name() const override { return "SURFACE"; }
+    const char *name4() const override { return "SURF"; }
+
+private:
+    float _thr_left;   // current (rate-limited) left  motor output (-100..+100)
+    float _thr_right;  // current (rate-limited) right motor output (-100..+100)
+};
+
+// GPS position-hold on the water surface (loiter for boat)
+class ModeSurfaceLoiter : public Mode {
+
+public:
+    using Mode::Mode;
+    Number mode_number() const override { return Number::SURFACE_LOITER; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+    void exit() override;
+
+    bool is_autopilot() const override { return true; }
+    bool requires_position() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(AP_Arming::Method method) const override { return false; }
+    bool allows_save_trim() const override { return false; }
+
+protected:
+    const char *name() const override { return "SURF_LOITER"; }
+    const char *name4() const override { return "SLTR"; }
+
+private:
+    Location _loiter_target;
+    float _thr_left;   // current (rate-limited) left  motor output (-100..+100)
+    float _thr_right;  // current (rate-limited) right motor output (-100..+100)
+    void update_loiter_target();
+};
+
+// Mission waypoint navigation on the water surface (auto for boat)
+class ModeSurfaceAuto : public Mode {
+
+public:
+    using Mode::Mode;
+    Number mode_number() const override { return Number::SURFACE_AUTO; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+    void exit() override;
+
+    bool is_autopilot() const override { return true; }
+    bool requires_position() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(AP_Arming::Method method) const override { return false; }
+    bool allows_save_trim() const override { return false; }
+
+protected:
+    const char *name() const override { return "SURF_AUTO"; }
+    const char *name4() const override { return "SATO"; }
+
+private:
+    Location _wp_target;
+    uint16_t _cmd_index;
+    bool _mission_complete;
+    bool _loiter_at_target;
+    float _thr_left;   // current (rate-limited) left  motor output (-100..+100)
+    float _thr_right;  // current (rate-limited) right motor output (-100..+100)
+    bool advance_to_next_wp(uint16_t start_idx);
+};
+#endif  // MODE_SURFACE_ENABLED

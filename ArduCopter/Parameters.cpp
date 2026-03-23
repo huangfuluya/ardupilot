@@ -1169,6 +1169,50 @@ const AP_Param::GroupInfo ParametersG2::var_info2[] = {
     // @Increment: 0.1
     AP_GROUPINFO("PILOT_TKO_ALT_M", 20, ParametersG2, pilot_takeoff_alt_m, PILOT_TKO_ALT_M_DEFAULT),
 
+#if MODE_SURFACE_ENABLED
+    // @Param: SURF_THR_GAIN
+    // @DisplayName: Surface mode throttle gain
+    // @Description: Scaling factor applied to the throttle stick in Surface mode. Output is the base throttle mixed equally to both motors (SERVOx_FUNCTION=73 left, 74 right), -100 to +100 percent (negative = reverse). Value of 1.0 maps full stick deflection to 100% throttle.
+    // @Range: 0.0 2.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("SURF_THR_GAIN", 21, ParametersG2, surface_thr_gain, 1.0f),
+
+    // @Param: SURF_STEER_GAIN
+    // @DisplayName: Surface mode differential steering gain
+    // @Description: Scaling factor applied to the yaw stick in Surface mode for differential twin-engine control (SERVOx_FUNCTION=73/74). Value of 1.0 maps full yaw stick to 100% differential (one motor full, other at zero).
+    // @Range: 0.0 2.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("SURF_STEER_GAIN", 22, ParametersG2, surface_steer_gain, 1.0f),
+
+    // @Param: SURF_AUTO_SPD
+    // @DisplayName: Surface auto/loiter cruise power
+    // @Description: Base throttle percentage (0-100) for both motors in SURFACE_LOITER and SURFACE_AUTO. Ramped down to zero as the boat approaches within 3x WPNAV_RADIUS.
+    // @Range: 0 100
+    // @Increment: 5
+    // @Units: %
+    // @User: Standard
+    AP_GROUPINFO("SURF_AUTO_SPD", 23, ParametersG2, surface_auto_spd, 50.0f),
+
+    // @Param: SURF_HEAD_KP
+    // @DisplayName: Surface auto/loiter heading P gain
+    // @Description: Proportional gain for differential thrust heading control in SURFACE_LOITER and SURFACE_AUTO. Value of 1.0 maps a 90-degree error to 100% differential. Increase for faster turns; decrease if the boat oscillates.
+    // @Range: 0.1 3.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("SURF_HEAD_KP", 24, ParametersG2, surface_head_kp, 1.0f),
+
+    // @Param: SURF_RAMP_SPD
+    // @DisplayName: Surface motor ramp speed
+    // @Description: Maximum rate of change for boat motor outputs in Surface modes (% per second). Lower values give gentler acceleration and deceleration. Set to 0 to track target immediately without rate limiting.
+    // @Range: 0 200
+    // @Increment: 5
+    // @Units: %/s
+    // @User: Standard
+    AP_GROUPINFO("SURF_RAMP_SPD", 25, ParametersG2, surface_ramp_spd, 50.0f),
+#endif
+
     // ID 62 is reserved for the AP_SUBGROUPEXTENSION
 
     AP_GROUPEND

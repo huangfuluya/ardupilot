@@ -239,6 +239,12 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
+// Surface mode - unmanned surface vessel (boat) navigation for quad+boat hybrid
+#ifndef MODE_SURFACE_ENABLED
+# define MODE_SURFACE_ENABLED (FRAME_CONFIG != HELI_FRAME)
+#endif
+
+//////////////////////////////////////////////////////////////////////////////
 // Flowhold - use optical flow to hover in place
 #ifndef MODE_FLOWHOLD_ENABLED
 # define MODE_FLOWHOLD_ENABLED AP_OPTICALFLOW_ENABLED

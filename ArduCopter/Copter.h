@@ -227,6 +227,11 @@ public:
     friend class ModeZigZag;
     friend class ModeAutorotate;
     friend class ModeTurtle;
+#if MODE_SURFACE_ENABLED
+    friend class ModeSurface;
+    friend class ModeSurfaceLoiter;
+    friend class ModeSurfaceAuto;
+#endif
 
     friend class _AutoTakeoff;
 
@@ -1102,6 +1107,11 @@ private:
 #endif
 #if MODE_TURTLE_ENABLED
     ModeTurtle mode_turtle;
+#endif
+#if MODE_SURFACE_ENABLED
+    ModeSurface mode_surface;
+    ModeSurfaceLoiter mode_surface_loiter;
+    ModeSurfaceAuto mode_surface_auto;
 #endif
 
     // mode.cpp
