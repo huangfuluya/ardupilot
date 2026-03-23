@@ -315,6 +315,16 @@ uint32_t Copter::get_available_mode_enabled_mask() const
     return mask;
 }
 
+#if MODE_SURFACE_ENABLED
+// returns true if mode_num is one of the surface (boat) modes
+static bool mode_is_surface(Mode::Number mode_num)
+{
+    return mode_num == Mode::Number::SURFACE ||
+           mode_num == Mode::Number::SURFACE_LOITER ||
+           mode_num == Mode::Number::SURFACE_AUTO;
+}
+#endif
+
 // set_mode - change flight mode and perform any necessary initialisation
 // optional force parameter used to force the flight mode change (used only first time mode is set)
 // returns true if mode was successfully set
@@ -432,6 +442,17 @@ bool Copter::set_mode(Mode::Number mode, ModeReason reason)
         mode_change_failed(new_flightmode, "in RC failsafe");
         return false;
     }
+
+#if MODE_SURFACE_ENABLED
+    // prevent switching from a surface (boat) mode to a multirotor flight
+    // mode while armed — operator must disarm first
+    if (!ignore_checks) {
+        if (mode_is_surface(flightmode->mode_number()) && !mode_is_surface(mode)) {
+            mode_change_failed(new_flightmode, "disarm before switching to flight mode");
+            return false;
+        }
+    }
+#endif
 
     if (!new_flightmode->init(ignore_checks)) {
         mode_change_failed(new_flightmode, "init failed");
@@ -1023,10 +1044,7 @@ void Mode::output_to_motors()
     //   • the vehicle is disarmed — even inside a surface mode.
     // This prevents bidirectional/reversible ESCs from spinning unexpectedly
     // during rotor flight or while the vehicle is unarmed on the water.
-    const Number num = mode_number();
-    const bool is_surface_mode = (num == Number::SURFACE ||
-                                  num == Number::SURFACE_LOITER ||
-                                  num == Number::SURFACE_AUTO);
+    const bool is_surface_mode = mode_is_surface(mode_number());
     if (!is_surface_mode || !motors->armed()) {
         SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  100);
         SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 100);
