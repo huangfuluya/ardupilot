@@ -33,9 +33,9 @@ static constexpr float SURF_LOITER_MOVE_RATE_MS = 2.0f;
 // surface_loiter_init - capture current GPS position as the loiter target
 bool ModeSurfaceLoiter::init(bool ignore_checks)
 {
-    // Refuse to enter a boat mode while flying in multirotor mode
-    if (!copter.ap.land_complete && !ignore_checks) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "SurfLoiter: not available while airborne");
+    // Refuse to enter a boat mode while armed in multirotor mode
+    if (motors->armed() && !ignore_checks) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "SurfLoiter: disarm before switching to surface mode");
         return false;
     }
 
