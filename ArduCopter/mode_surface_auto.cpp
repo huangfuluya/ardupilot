@@ -34,6 +34,12 @@ static constexpr float SURFACE_DIFF_MAX = 100.0f;
 // surface_auto_init - validate mission and load first waypoint
 bool ModeSurfaceAuto::init(bool ignore_checks)
 {
+    // Refuse to enter a boat mode while flying in multirotor mode
+    if (!copter.ap.land_complete && !ignore_checks) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "SurfAuto: not available while airborne");
+        return false;
+    }
+
     if (!copter.position_ok() && !ignore_checks) {
         return false;
     }
