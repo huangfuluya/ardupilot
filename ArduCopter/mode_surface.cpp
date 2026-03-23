@@ -5,7 +5,7 @@
 /*
  * Surface mode — unmanned surface vessel (boat) navigation for quad+boat hybrid
  *
- * The quadrotor motors idle at GROUND_IDLE while boat propulsion is commanded
+ * The quadrotor motors are shut down while boat propulsion is commanded
  * through differential twin-engine SRV_Channel outputs.  Both ESCs must be
  * configured for bidirectional / reversible operation (neutral = 1500 µs):
  *   Throttle stick above centre → forward thrust, below centre → reverse thrust
@@ -61,8 +61,8 @@ void ModeSurface::run()
         return;
     }
 
-    // Set quad motors to ground idle — not thrusting, ready for aerial takeoff
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
+    // Set quad motors to shut down — no spinning in surface mode
+    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
 
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:

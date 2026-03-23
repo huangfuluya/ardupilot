@@ -5,7 +5,7 @@
 /*
  * Surface Loiter mode — GPS position hold for quad+boat hybrid vehicle on water.
  *
- * The quad motors idle at GROUND_IDLE while the boat's propulsion holds position
+ * The quad motors are shut down while the boat's propulsion holds position
  * using differential twin-engine mixing.  Both ESCs must support bidirectional /
  * reversible operation (neutral = 1500 µs):
  *   Left  motor : SRV_Channel::k_throttleLeft  (-100..+100, SERVOx_FUNCTION = 73)
@@ -69,8 +69,8 @@ void ModeSurfaceLoiter::run()
         return;
     }
 
-    // Quad motors stay at ground idle — no thrust from rotors
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
+    // Quad motors shut down — no spinning in surface mode
+    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
 
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:

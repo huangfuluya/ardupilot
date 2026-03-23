@@ -27,7 +27,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `ArduCopter/mode_surface.cpp` | 新增 **SURFACE** 模式（模式编号 29）。飞手手动控制推进与转向，遥控器油门杆驱动基础推力，偏航杆驱动左右差动修正。四旋翼电机保持 `GROUND_IDLE` 怠速。 |
+| `ArduCopter/mode_surface.cpp` | 新增 **SURFACE** 模式（模式编号 29）。飞手手动控制推进与转向，遥控器油门杆驱动基础推力，偏航杆驱动左右差动修正。四旋翼电机完全停转（`SHUT_DOWN`）。 |
 | `ArduCopter/mode_surface_loiter.cpp` | 新增 **SURFACE\_LOITER** 模式（模式编号 31）。进入时以当前 GPS 位置为锁定目标，航向 P 控制器通过差动推力自动纠偏，油门按距离线性减速。飞手可用俯仰/横滚杆移动定点目标。 |
 | `ArduCopter/mode_surface_auto.cpp` | 新增 **SURFACE\_AUTO** 模式（模式编号 32）。读取 ArduCopter 任务列表，依次执行 `NAV_WAYPOINT` 和 `NAV_LOITER_UNLIM` 命令，最后一个航点完成后停止。 |
 | `ArduCopter/README_Surface_Modes.md` | 本说明文档。 |

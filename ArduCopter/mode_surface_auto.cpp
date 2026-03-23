@@ -5,7 +5,7 @@
 /*
  * Surface Auto mode — mission waypoint navigation for quad+boat hybrid on water.
  *
- * The quad motors idle at GROUND_IDLE.  The boat's propulsion follows ArduCopter
+ * The quad motors are shut down.  The boat's propulsion follows ArduCopter
  * mission NAV_WAYPOINT / NAV_LOITER_UNLIM commands via differential twin-engine
  * mixing.  Both ESCs must support bidirectional / reversible operation
  * (neutral = 1500 µs):
@@ -82,8 +82,8 @@ void ModeSurfaceAuto::run()
         return;
     }
 
-    // Quad motors stay at ground idle — no thrust from rotors
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
+    // Quad motors shut down — no spinning in surface mode
+    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
 
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
