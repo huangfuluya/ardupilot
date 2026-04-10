@@ -218,6 +218,7 @@ public:
     friend class ModeLoiter;
     friend class ModePosHold;
     friend class ModeRTL;
+    friend class ModeSquare;
     friend class ModeSmartRTL;
     friend class ModeSport;
     friend class ModeStabilize;
@@ -1046,6 +1047,9 @@ private:
 #endif
 #if MODE_ZIGZAG_ENABLED == ENABLED
     ModeZigZag mode_zigzag;
+#endif
+#if MODE_SQUARE_ENABLED == ENABLED
+    ModeSquare mode_square;
 #endif
 #if MODE_AUTOROTATE_ENABLED == ENABLED
     ModeAutorotate mode_autorotate;

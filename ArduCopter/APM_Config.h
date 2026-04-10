@@ -27,6 +27,7 @@
 //#define MODE_SYSTEMID_ENABLED DISABLED            // disable system ID mode support
 //#define MODE_THROW_ENABLED    DISABLED            // disable throw mode support
 //#define MODE_ZIGZAG_ENABLED   DISABLED            // disable zigzag mode support
+//#define MODE_SQUARE_ENABLED   DISABLED            // disable square mode support
 //#define OSD_ENABLED           DISABLED            // disable on-screen-display support
 
 // features below are disabled by default on all boards

@@ -1,0 +1,50 @@
+name: build pixhawk6x copter
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ArduCopter/**'
+      - 'libraries/**'
+      - 'waf'
+      - '.github/workflows/build_pixhawk6x_copter.yml'
+  pull_request:
+    paths:
+      - 'ArduCopter/**'
+      - 'libraries/**'
+      - 'waf'
+      - '.github/workflows/build_pixhawk6x_copter.yml'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    container: ardupilot/ardupilot-dev-chibios:v0.1.3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build ArduCopter for Pixhawk6X
+        run: |
+          git config --global --add safe.directory ${GITHUB_WORKSPACE}
+          ./waf configure --board Pixhawk6X
+          ./waf copter
+
+      - name: Upload Pixhawk6X firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arducopter-pixhawk6x
+          path: |
+            build/Pixhawk6X/bin/arducopter.apj
+            build/Pixhawk6X/bin/arducopter.bin
+            build/Pixhawk6X/bin/arducopter.hex
+          if-no-files-found: warn

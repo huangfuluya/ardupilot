@@ -95,6 +95,7 @@ public:
         AUTOROTATE =   26,  // Autonomous autorotation
         AUTO_RTL =     27,  // Auto RTL, this is not a true mode, AUTO will report as this mode if entered to perform a DO_LAND_START Landing sequence
         TURTLE =       28,  // Flip over after crash
+        SQUARE =       29,  // SQUARE mode flies a fixed square path
 
         // Mode number 127 reserved for the "drone show mode" in the Skybrush
         // fork at https://github.com/skybrush-io/ardupilot
@@ -1799,6 +1800,38 @@ protected:
     uint32_t last_log_ms;   // system time of last time desired velocity was logging
 };
 #endif
+
+class ModeSquare : public Mode {
+
+public:
+    // inherit constructor
+    using Mode::Mode;
+    Number mode_number() const override { return Number::SQUARE; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+
+    bool requires_GPS() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(AP_Arming::Method method) const override { return false; };
+    bool is_autopilot() const override { return true; }
+
+protected:
+    const char *name() const override { return "SQUARE"; }
+    const char *name4() const override { return "SQRE"; }
+
+    uint32_t wp_distance() const override;
+    int32_t wp_bearing() const override;
+
+private:
+    static constexpr uint8_t NUM_WAYPOINTS = 4;
+
+    Vector3f _waypoints[NUM_WAYPOINTS];
+    uint8_t _leg_index = 0;
+    bool _terrain_alt = false;
+    bool _completed = false;
+    uint32_t _reached_wp_time_ms = 0;
+};
 
 class ModeZigZag : public Mode {        
 

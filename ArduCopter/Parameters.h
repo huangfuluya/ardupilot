@@ -385,6 +385,7 @@ public:
         k_param_vehicle = 257, // vehicle common block of parameters
         k_param_throw_altitude_min,
         k_param_throw_altitude_max,
+        k_param_square_side_length,
 
         // the k_param_* space is 9-bits in size
         // 511: reserved
@@ -448,6 +449,7 @@ public:
     AP_Int8         simple_modes;
     AP_Int8         flight_mode_chan;
     AP_Int8         initial_mode;
+    AP_Float        square_side_length;
 
     // Misc
     //
