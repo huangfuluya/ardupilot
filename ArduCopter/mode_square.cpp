@@ -22,7 +22,8 @@ bool ModeSquare::init(bool ignore_checks)
     // start waypoint navigation
     wp_nav->wp_and_spline_init();
 
-    const float side_length_cm = constrain_float((float)g.square_side_length, 1.0f, 200.0f) * 100.0f;
+    const float side_length_m = constrain_float((float)g.square_side_length, 1.0f, 200.0f);
+    const float side_length_cm = side_length_m * 100.0f;
     const Vector2f start_xy = inertial_nav.get_position_xy_cm();
     const Vector2f forward {ahrs.cos_yaw(), ahrs.sin_yaw()};
     const Vector2f right {-ahrs.sin_yaw(), ahrs.cos_yaw()};
@@ -54,7 +55,7 @@ bool ModeSquare::init(bool ignore_checks)
         return false;
     }
 
-    gcs().send_text(MAV_SEVERITY_INFO, "Square: start side %.1fm", (double)(side_length_cm * 0.01f));
+    gcs().send_text(MAV_SEVERITY_INFO, "Square: start side %.1fm", (double)side_length_m);
     return true;
 }
 
