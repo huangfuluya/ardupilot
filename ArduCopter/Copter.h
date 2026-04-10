@@ -218,6 +218,7 @@ public:
     friend class ModeLoiter;
     friend class ModePosHold;
     friend class ModeRTL;
+    friend class ModeSquare;
     friend class ModeSmartRTL;
     friend class ModeSport;
     friend class ModeStabilize;
