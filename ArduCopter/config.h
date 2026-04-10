@@ -259,6 +259,12 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
+// Square - fly vehicle in a square pattern
+#ifndef MODE_SQUARE_ENABLED
+# define MODE_SQUARE_ENABLED ENABLED
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
 // Turtle - allow vehicle to be flipped over after a crash
 #ifndef MODE_TURTLE_ENABLED
 # define MODE_TURTLE_ENABLED HAL_DSHOT_ENABLED && FRAME_CONFIG != HELI_FRAME
