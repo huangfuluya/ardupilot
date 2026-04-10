@@ -1,0 +1,32 @@
+name: test pixhawk6x hello
+
+on:
+  push:
+    paths:
+      - 'libraries/AP_Vehicle/**'
+      - '.github/workflows/test_pixhawk6x_hello.yml'
+  pull_request:
+    paths:
+      - 'libraries/AP_Vehicle/**'
+      - '.github/workflows/test_pixhawk6x_hello.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{github.workflow}}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    container: ardupilot/ardupilot-dev-chibios:v0.1.3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: build arducopter for Pixhawk6X
+        shell: bash
+        run: |
+          git config --global --add safe.directory ${GITHUB_WORKSPACE}
+          ./waf configure --board Pixhawk6X
+          ./waf copter
