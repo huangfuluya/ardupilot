@@ -932,6 +932,10 @@ void AP_Vehicle::one_Hz_update(void)
 {
     one_Hz_counter++;
 
+#if defined(APJ_BOARD_ID) && (APJ_BOARD_ID == 53) && HAL_GCS_ENABLED
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "hello world");
+#endif
+
     /*
       every 10s check if using a 2M firmware on a 1M board
      */
