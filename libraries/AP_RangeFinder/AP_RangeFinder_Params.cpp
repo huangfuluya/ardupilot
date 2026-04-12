@@ -100,7 +100,7 @@ const AP_Param::GroupInfo AP_RangeFinder_Params::var_info[] = {
 
     // @Param: ADDR
     // @DisplayName: Bus address of sensor
-    // @Description: This sets the bus address of the sensor, where applicable. Used for the I2C and DroneCAN sensors to allow for multiple sensors on different addresses.
+    // @Description: This sets the bus address of the sensor, where applicable. Used for the I2C and DroneCAN sensors to allow for multiple sensors on different addresses. For MAVLink sensors, this can be used to match DISTANCE_SENSOR.id when set above zero.
     // @Range: 0 127
     // @Increment: 1
     // @User: Standard
