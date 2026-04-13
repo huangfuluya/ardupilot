@@ -29,8 +29,8 @@ void AP_RangeFinder_MAVLink::handle_msg(const mavlink_message_t &msg)
 
     const int8_t configured_id = params.address;
     if (configured_id > 0) {
-        // if ADDR is set, route data to this instance using DISTANCE_SENSOR.id
-        if (packet.id != uint8_t(configured_id)) {
+        // if ADDR is set, route data to this instance using MAVLink component ID
+        if (msg.compid != uint8_t(configured_id)) {
             return;
         }
     } else if (packet.orientation != orientation()) {
