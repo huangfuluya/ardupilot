@@ -52,6 +52,7 @@ public:
 #endif
 
     enum Rotation orientation() const { return (Rotation)params.orientation.get(); }
+    int8_t address() const { return params.address; }
     float distance() const { return state.distance_m; }
     uint16_t distance_cm() const { return state.distance_m*100.0f; }
     int8_t signal_quality_pct() const  WARN_IF_UNUSED { return state.signal_quality_pct; }
