@@ -37,10 +37,18 @@ void AP_Proximity_RangeFinder::update(void)
 
     uint32_t now = AP_HAL::millis();
 
+    // if an address (component ID) is configured for this proximity instance,
+    // only read from rangefinder backends that have the same address configured
+    const int8_t prx_address = params.address;
+
     // look through all rangefinders
     for (uint8_t i=0; i < rngfnd->num_sensors(); i++) {
         AP_RangeFinder_Backend *sensor = rngfnd->get_backend(i);
         if (sensor == nullptr) {
+            continue;
+        }
+        // if proximity address is configured, filter by component ID
+        if (prx_address > 0 && sensor->address() != prx_address) {
             continue;
         }
         if (sensor->has_data()) {
