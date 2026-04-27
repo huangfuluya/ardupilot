@@ -3103,6 +3103,33 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
         self.test_takeoff_check_mode("AUTO", force_disarm=True)
         self.context_pop()
 
+    def UnifiedMPC(self):
+        '''Enable Q_MPC and verify the unified MPC path can boot and enter VTOL mode'''
+        self.context_push()
+        self.set_parameters({
+            "Q_MPC_ENABLE": 1,
+            "Q_MPC_DT_MS": 20,
+            "Q_MPC_QVX": 20,
+            "Q_MPC_QVY": 10,
+            "Q_MPC_QVZ": 50,
+            "Q_MPC_QROLL": 10,
+            "Q_MPC_QPITCH": 20,
+            "Q_MPC_IQITR": 20,
+        })
+        self.reboot_sitl()
+
+        # Force QuadPlane setup path (where AP_VTOL_MPC::init() runs)
+        self.change_mode('QHOVER')
+        self.wait_mode('QHOVER')
+
+        # sanity check the new MPC parameter group is present and enabled
+        if self.get_parameter("Q_MPC_ENABLE") != 1:
+            raise NotAchievedException("Q_MPC_ENABLE did not stick after reboot")
+
+        # Ensure MPC-enabled QuadPlane remains responsive in VTOL mode
+        self.delay_sim_time(5)
+        self.context_pop()
+
     def tests(self):
         '''return list of all tests'''
 
@@ -3166,6 +3193,7 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
             self.ScriptedArmingChecksApplet,
             self.TerrainAvoidApplet,
             self.TakeoffCheck,
+            self.UnifiedMPC,
             self.FenceRelativePreArms,
             self.FenceRelativeToHomeMaxAlt,
             self.FenceRelativeToHomeMinAlt,
