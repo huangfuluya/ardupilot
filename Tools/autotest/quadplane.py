@@ -3104,7 +3104,7 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
         self.context_pop()
 
     def UnifiedMPC(self):
-        '''Enable Q_MPC and verify the unified MPC path can boot and enter VTOL mode'''
+        '''Enable Q_MPC and verify the unified MPC controller initializes and can enter VTOL mode'''
         self.context_push()
         self.set_parameters({
             "Q_MPC_ENABLE": 1,
@@ -3118,7 +3118,8 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
         })
         self.reboot_sitl()
 
-        # Force QuadPlane setup path (where AP_VTOL_MPC::init() runs)
+        # Q_MPC_ENABLE is reboot-required; after reboot, entering QHOVER forces
+        # the QuadPlane setup path (where AP_VTOL_MPC::init() runs)
         self.change_mode('QHOVER')
         self.wait_mode('QHOVER')
 
@@ -3126,7 +3127,8 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
         if self.get_parameter("Q_MPC_ENABLE") != 1:
             raise NotAchievedException("Q_MPC_ENABLE did not stick after reboot")
 
-        # Ensure MPC-enabled QuadPlane remains responsive in VTOL mode
+        # Ensure MPC-enabled QuadPlane remains responsive/stable in VTOL mode
+        # for a short dwell period.
         self.delay_sim_time(5)
         self.context_pop()
 
