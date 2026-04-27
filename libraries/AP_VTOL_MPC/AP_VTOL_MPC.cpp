@@ -104,8 +104,8 @@ TilthvecParams default_tilthvec_params()
     p.Izz       = 4.6678f;
     p.arm_x     = 0.25f;
     p.arm_y     = 0.30f;
-    p.c_F       = 8.004e-5f;  // T_max/omega_max²; omega_max≈585 rad/s → ≈0.27 N·s²/rad²
-    p.c_K       = 1.6e-6f;   // roughly c_K/c_F ≈ 0.02
+    p.c_F       = 8.004e-5f;  // thrust coefficient [N·s²/rad²], calibrated to T_max=27.36N
+    p.c_K       = 1.6e-6f;   // torque coefficient [N·m·s²/rad²], c_K/c_F ratio ≈ 0.02
     p.T_max_N   = 27.36f;    // per rotor at 100% throttle
     p.S_wing     = 0.44f;
     p.S_aileron  = 0.036f;
@@ -335,8 +335,8 @@ void VTOLDynamics::f(const float x[VTOL_MPC_NX],
     }
 
     // ── Gravity in inertial frame (NED: positive down) ──────────────────────
-    const float g = 9.80665f;
-    float F_I_grav[3] = {0.0f, 0.0f, _p.mass_kg * g};
+    // Use ArduPilot's standard GRAVITY_MSS constant for consistency
+    float F_I_grav[3] = {0.0f, 0.0f, _p.mass_kg * GRAVITY_MSS};
 
     // ── Linear acceleration in inertial frame ───────────────────────────────
     // v̇ = (1/m)*(F_thrust + F_aero) + g*e_d   (equation 23 term 1)
@@ -344,7 +344,6 @@ void VTOLDynamics::f(const float x[VTOL_MPC_NX],
     xdot[0] = (F_I_thrust[0] + F_I_aero[0]) / _p.mass_kg + F_I_grav[0] / _p.mass_kg;
     xdot[1] = (F_I_thrust[1] + F_I_aero[1]) / _p.mass_kg + F_I_grav[1] / _p.mass_kg;
     xdot[2] = (F_I_thrust[2] + F_I_aero[2]) / _p.mass_kg + F_I_grav[2] / _p.mass_kg;
-
     // ── Tilt rate (control input directly integrated) ──────────────────────
     xdot[3] = chi_dot[0]; // χ̇_L
     xdot[4] = chi_dot[1]; // χ̇_R
@@ -445,8 +444,9 @@ void VTOLDynamics::jacobians(const float x[VTOL_MPC_NX],
 MPCSolver::MPCSolver(const VTOLDynamics &dyn,
                      const MPCWeights   &w,
                      const MPCConstraints &con,
-                     float dt_s)
-    : _dyn(dyn), _w(w), _con(con), _dt(dt_s)
+                     float dt_s,
+                     int max_iter)
+    : _dyn(dyn), _w(w), _con(con), _dt(dt_s), _max_iter(max_iter)
 {
     memset(_U, 0, sizeof(_U));
     memset(_X, 0, sizeof(_X));
@@ -456,7 +456,7 @@ void MPCSolver::reset(const float x0[VTOL_MPC_NX])
 {
     memset(_U, 0, sizeof(_U));
     // Initialise warm-start: zero tilt rate, thrust = hover thrust, level attitude
-    const float hover_thrust = _dyn.params().mass_kg * 9.80665f;
+    const float hover_thrust = _dyn.params().mass_kg * GRAVITY_MSS;
     for (int k = 0; k < VTOL_MPC_N; k++) {
         _U[k][2] = hover_thrust; // T
     }
@@ -668,10 +668,10 @@ bool MPCSolver::solve(const float x0[VTOL_MPC_NX],
     float cost_prev = compute_cost(v_ref, yaw_ref, airspeed_ms);
 
     // ── Projected gradient iterations ───────────────────────────────────────
-    const int max_iter = 20; // sufficient for good real-time performance
+    // Number of iterations is controlled by the Q_MPC_IQITR parameter
     float grad[VTOL_MPC_N][VTOL_MPC_NU];
 
-    for (int iter = 0; iter < max_iter; iter++) {
+    for (int iter = 0; iter < _max_iter; iter++) {
         // Backward pass: compute gradient
         backward_pass(v_ref, yaw_ref, airspeed_ms, grad);
 
@@ -935,7 +935,8 @@ void AP_VTOL_MPC::init()
     update_weights();
 
     _dyn   = NEW_NOTHROW VTOLDynamics(_params);
-    _solver = NEW_NOTHROW MPCSolver(*_dyn, _weights, _constraints, _dt_ms * 0.001f);
+    _solver = NEW_NOTHROW MPCSolver(*_dyn, _weights, _constraints,
+                                    _dt_ms * 0.001f, (int)_max_iter);
     _alloc  = NEW_NOTHROW ControlAllocator(_params);
 
     if (!_dyn || !_solver || !_alloc) {
@@ -953,6 +954,8 @@ void AP_VTOL_MPC::update_weights()
     _weights.Qv[0] = _Qvx; _weights.Qv[1] = _Qvy; _weights.Qv[2] = _Qvz;
     _weights.Qf[0] = _Qvx; _weights.Qf[1] = _Qvy; _weights.Qf[2] = _Qvz;
     _weights.Qpsi[0] = _Qroll; _weights.Qpsi[1] = _Qpitch; _weights.Qpsi[2] = 10.0f;
+    // Propagate configurable iteration count to solver
+    if (_solver) _solver->set_max_iter((int)_max_iter);
 }
 
 void AP_VTOL_MPC::reset()

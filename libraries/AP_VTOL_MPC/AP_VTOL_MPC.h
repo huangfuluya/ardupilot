@@ -6,7 +6,7 @@
  *   Towards Seamless Mode Transitioning," AIAA SciTech 2024.
  *
  * Architecture (Figure 5 of the paper):
- *   Outer loop: MPC velocity controller (10 Hz in embedded, 100 Hz in SITL)
+ *   Outer loop: MPC velocity controller (50 Hz default, configurable via Q_MPC_DT_MS)
  *     - Input:  velocity setpoint v_sp in NED frame
  *     - Output: desired attitude Ψ_d, aggregate thrust T, tilt rate χ̇
  *   Inner loop: existing ArduPilot PID attitude controller (unchanged)
@@ -182,11 +182,15 @@ private:
                             const float euler_d[3],
                             float tau_B[3]) const;
 
-    // Gains for embedded inner-loop simulation in MPC state update
-    // These match ArduPilot's Q_A_ANG_P and Q_A_RAT_P / Q_A_RAT_D
-    static constexpr float KP_ATT  = 4.5f;   // attitude P gain  [1/s]
-    static constexpr float KP_RATE = 0.15f;  // rate P gain
-    static constexpr float KD_RATE = 0.002f; // rate D gain
+    // Gains for embedded inner-loop simulation in MPC state update.
+    // These fixed values match ArduPilot's default Q_A_ANG_P and Q_A_RAT_P/D
+    // parameters for the tilthvec model.  Fixed values are used (rather than
+    // reading runtime parameters) so that the MPC prediction model is consistent
+    // with the vehicle's actual inner loop response without creating a
+    // dependency on the attitude controller object inside this library.
+    static constexpr float KP_ATT  = 4.5f;   // Q_A_ANG_RLL_P default [1/s]
+    static constexpr float KP_RATE = 0.15f;  // Q_A_RAT_RLL_P default
+    static constexpr float KD_RATE = 0.002f; // Q_A_RAT_RLL_D default
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,7 +248,8 @@ public:
     MPCSolver(const VTOLDynamics &dyn,
               const MPCWeights   &w,
               const MPCConstraints &con,
-              float dt_s);
+              float dt_s,
+              int max_iter = 20);
 
     // Solve receding-horizon problem.
     //   x0        : current state (flat array, VTOL_MPC_NX)
@@ -262,11 +267,15 @@ public:
     // Reset warm-start trajectory (e.g. on mode entry)
     void reset(const float x0[VTOL_MPC_NX]);
 
+    // Update maximum gradient descent iterations (from Q_MPC_IQITR parameter)
+    void set_max_iter(int max_iter) { _max_iter = max_iter; }
+
 private:
     const VTOLDynamics   &_dyn;
     const MPCWeights     &_w;
     const MPCConstraints &_con;
     float _dt;
+    int   _max_iter; // projected gradient iterations per solve step
 
     // Warm-start input trajectory  U[k][m]
     float _U[VTOL_MPC_N][VTOL_MPC_NU];

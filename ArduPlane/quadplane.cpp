@@ -986,7 +986,9 @@ bool QuadPlane::run_mpc_velocity_controller(const Vector3f &vel_ref_ned,
         vtol_mpc.reset();
         mpc_reset_needed = false;
         mpc_omega_prev = omega_body;
-        return false; // let first cycle run next iteration
+        // Return false to skip applying outputs this cycle; MPC state is now
+        // warm-started and will produce valid outputs on the next call.
+        return false;
     }
 
     // Update MPC state
@@ -1022,13 +1024,16 @@ bool QuadPlane::run_mpc_velocity_controller(const Vector3f &vel_ref_ned,
     const float chi_R_norm = constrain_float(chi_out_rad[1] / M_PI_2, 0.0f, 1.0f);
 
     // Apply tilt to servo channels: k_tiltMotorLeft and k_tiltMotorRight
-    // Both sides average the MPC output (symmetric tilt for uniform transitions)
+    // SRV_Channels scaled output range is [-4500..4500] for most channels,
+    // but tilt motor functions use [0..1000] (0=up/hover, 1000=forward).
+    // Scale factor 1000 converts normalised [0..1] to tiltrotor output range.
+    static constexpr float TILT_SCALE = 1000.0f;
     const float tilt_cmd = (chi_L_norm + chi_R_norm) * 0.5f;
     if (tiltrotor.enabled()) {
         SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,
-                                        1000.0f * tilt_cmd);
+                                        TILT_SCALE * tilt_cmd);
         SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight,
-                                        1000.0f * tilt_cmd);
+                                        TILT_SCALE * tilt_cmd);
         // Also update the Tiltrotor's tracked current_tilt for state consistency
         tiltrotor.current_tilt = tilt_cmd;
     }
