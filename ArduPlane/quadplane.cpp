@@ -572,6 +572,11 @@ const AP_Param::GroupInfo QuadPlane::var_info2[] = {
     // @Bitmask: 1: Disable thrust loss detection in transtions and fixed wing modes. Thrust loss detection will only run in VTOL modes.
     AP_GROUPINFO("THRST_LOSS_OPT", 42, QuadPlane, thrust_loss.options, 0),
 
+    // @Group: MPC_
+    // @Path: ../libraries/AP_VTOL_MPC/AP_VTOL_MPC.cpp
+    // Unified MPC velocity controller (Chen et al., AIAA SciTech 2024)
+    AP_SUBGROUPINFO(vtol_mpc, "MPC_", 43, QuadPlane, AP_VTOL_MPC),
+
     AP_GROUPEND
 };
 
@@ -845,6 +850,14 @@ bool QuadPlane::setup(void)
 
     tiltrotor.setup();
 
+    // Initialise unified MPC controller (Chen et al. 2024)
+    vtol_mpc.init();
+    mpc_chi_L = 0.0f;
+    mpc_chi_R = 0.0f;
+    mpc_omega_prev.zero();
+    mpc_last_update_ms = 0;
+    mpc_reset_needed = true;
+
     if (!transition) {
         transition = NEW_NOTHROW SLT_Transition(*this, motors);
     }
@@ -906,6 +919,124 @@ void QuadPlane::run_esc_calibration(void)
         motors->set_throttle_passthrough_for_esc_calibration(1);
         break;
     }
+}
+
+/*
+  Run the unified MPC velocity outer loop (Chen et al., 2024).
+
+  This function implements the velocity MPC controller from Section III.B of the
+  paper.  It is called by hold_hover() and vtol_position_controller() when MPC is
+  enabled (Q_MPC_ENABLE=1), replacing the PID-based position/velocity controllers
+  while keeping the existing PID attitude inner loop intact.
+
+  Architecture (Figure 5 of the paper):
+    1. MPC solver receives velocity setpoint and current state.
+    2. MPC outputs: desired attitude Ψ_d, total thrust T, tilt rates χ̇.
+    3. Desired attitude is sent to attitude_control (existing PID inner loop).
+    4. Total thrust is applied directly via set_throttle_out.
+    5. Tilt angles are sent directly to the tilt servo channels.
+
+  Returns true if MPC was applied successfully, false to fall back to PID.
+*/
+bool QuadPlane::run_mpc_velocity_controller(const Vector3f &vel_ref_ned,
+                                             float yaw_ref_rad)
+{
+    if (!vtol_mpc.enabled()) {
+        return false;
+    }
+
+    const uint32_t now_ms = AP_HAL::millis();
+
+    // Rate-limit MPC updates to Q_MPC_DT_MS interval
+    if ((now_ms - mpc_last_update_ms) < (uint32_t)vtol_mpc._dt_ms) {
+        return true; // return true to indicate MPC is active
+    }
+    mpc_last_update_ms = now_ms;
+
+    // ── Gather current vehicle state from AHRS ───────────────────────────────
+    Vector3f vel_ned;
+    if (!ahrs.get_velocity_NED(vel_ned)) {
+        // No valid velocity estimate; fall back to PID
+        return false;
+    }
+
+    Vector3f euler;
+    euler.x = ahrs.get_roll();
+    euler.y = ahrs.get_pitch();
+    euler.z = ahrs.get_yaw_rad();
+
+    Vector3f omega_body = ahrs.get_gyro();
+
+    float airspeed_ms = 0.0f;
+    plane.ahrs.airspeed_EAS(airspeed_ms);
+
+    // Read current tilt angle from tiltrotor (converted to rad from normalised 0..1)
+    // tiltrotor.current_tilt is in range [0..1] where 0=up, 1=forward
+    // Paper uses: 0°=up (hover), 90°=forward.  So chi_rad = current_tilt * pi/2
+    if (tiltrotor.enabled()) {
+        const float tilt_norm = tiltrotor.current_tilt;
+        mpc_chi_L = tilt_norm * M_PI_2;
+        mpc_chi_R = tilt_norm * M_PI_2; // tilthvec has symmetric left/right tilt
+    }
+
+    // Reset MPC on first call or after mode switch
+    if (mpc_reset_needed) {
+        vtol_mpc.set_state(vel_ned, euler, omega_body, mpc_omega_prev,
+                           mpc_chi_L, mpc_chi_R, airspeed_ms);
+        vtol_mpc.reset();
+        mpc_reset_needed = false;
+        mpc_omega_prev = omega_body;
+        return false; // let first cycle run next iteration
+    }
+
+    // Update MPC state
+    vtol_mpc.set_state(vel_ned, euler, omega_body, mpc_omega_prev,
+                       mpc_chi_L, mpc_chi_R, airspeed_ms);
+
+    // ── Run MPC solver ───────────────────────────────────────────────────────
+    int32_t att_out_cd[3];
+    float throttle_out;
+    float chi_out_rad[2];
+
+    if (!vtol_mpc.update(vel_ref_ned, yaw_ref_rad,
+                          att_out_cd, throttle_out, chi_out_rad)) {
+        mpc_omega_prev = omega_body;
+        return false;
+    }
+
+    // ── Apply outputs ────────────────────────────────────────────────────────
+
+    // 1. Attitude setpoint → existing PID attitude inner loop
+    //    This matches the paper's architecture: MPC → Ψ_d → inner PID → torques
+    attitude_control->input_euler_angle_roll_pitch_yaw_cd(
+        att_out_cd[0], att_out_cd[1], att_out_cd[2], false);
+
+    // 2. Thrust → throttle output
+    set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    attitude_control->set_throttle_out(constrain_float(throttle_out, 0.0f, 1.0f),
+                                       true, 0.0f);
+
+    // 3. Tilt angle → servo channels  (normalised 0..1 for ArduPilot tiltrotor)
+    //    Convert from rad back to ArduPilot's 0..1 normalised tilt
+    const float chi_L_norm = constrain_float(chi_out_rad[0] / M_PI_2, 0.0f, 1.0f);
+    const float chi_R_norm = constrain_float(chi_out_rad[1] / M_PI_2, 0.0f, 1.0f);
+
+    // Apply tilt to servo channels: k_tiltMotorLeft and k_tiltMotorRight
+    // Both sides average the MPC output (symmetric tilt for uniform transitions)
+    const float tilt_cmd = (chi_L_norm + chi_R_norm) * 0.5f;
+    if (tiltrotor.enabled()) {
+        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,
+                                        1000.0f * tilt_cmd);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight,
+                                        1000.0f * tilt_cmd);
+        // Also update the Tiltrotor's tracked current_tilt for state consistency
+        tiltrotor.current_tilt = tilt_cmd;
+    }
+
+    // Update previous omega for inner-loop delay model
+    mpc_omega_prev = omega_body;
+
+    return true;
 }
 
 /*
@@ -1100,6 +1231,20 @@ void QuadPlane::set_climb_rate_ms(float target_climb_rate_ms)
  */
 void QuadPlane::hold_hover(float target_climb_rate_cms)
 {
+    // ── MPC velocity controller (Chen et al. 2024) ───────────────────────────
+    // When enabled, the unified MPC handles the full velocity outer loop
+    // including vertical, horizontal, and tilt scheduling, without mode switching.
+    if (vtol_mpc.enabled()) {
+        // Build hover velocity reference: zero horizontal, target vertical
+        Vector3f vel_ref(0.0f, 0.0f, -target_climb_rate_cms * 0.01f);
+        const float yaw_ref = ahrs.get_yaw_rad();
+        if (run_mpc_velocity_controller(vel_ref, yaw_ref)) {
+            // MPC handled the control loop; skip standard PID path
+            return;
+        }
+        // MPC failed or not ready → fall through to standard path
+    }
+
     // motors use full range
     set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
@@ -2359,6 +2504,24 @@ void QuadPlane::vtol_position_controller(void)
 
     if (plane.arming.is_armed_and_safety_off()) {
         poscontrol.last_run_ms = now_ms;
+    }
+
+    // ── MPC unified velocity controller (Chen et al. 2024) ──────────────────
+    // When enabled, the unified MPC replaces the standard position/velocity
+    // controllers for VTOL flight phases.  It computes attitude, thrust, and
+    // tilt commands in a single optimisation, avoiding mode switching.
+    if (vtol_mpc.enabled()) {
+        // Compute velocity reference from position controller target
+        Vector3f vel_ref_ned;
+        if (pos_control->NE_is_active()) {
+            // Use the existing pos_control desired velocity as reference
+            const Vector3f vel_d = pos_control->get_vel_desired_NED_ms();
+            vel_ref_ned = vel_d;
+        }
+        if (run_mpc_velocity_controller(vel_ref_ned, ahrs.get_yaw_rad())) {
+            // MPC handled the full control loop
+            return;
+        }
     }
 
     // avoid running the z controller in approach and airbrake if we're not already running it
@@ -4729,6 +4892,9 @@ void QuadPlane::mode_enter(void)
 
     force_fw_control_recovery = false;
     in_spin_recovery = false;
+
+    // Reset MPC on any mode entry to avoid stale warm-start trajectory
+    mpc_reset_needed = true;
 }
 
 // Set attitude control yaw rate time constant to pilot input command model value

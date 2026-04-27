@@ -21,6 +21,7 @@
 #include <AP_Logger/LogStructure.h>
 #include <AP_Mission/AP_Mission.h>
 #include <AP_Proximity/AP_Proximity.h>
+#include <AP_VTOL_MPC/AP_VTOL_MPC.h>
 #include "qautotune.h"
 #include "defines.h"
 #include "tailsitter.h"
@@ -766,6 +767,24 @@ private:
     } thrust_loss;
 
     static QuadPlane *_singleton;
+
+    // ── Unified MPC controller (Chen et al., 2024) ──────────────────────────
+    // Replaces the outer velocity/position control loop with a receding-horizon
+    // MPC that handles all flight phases without mode switching.
+    AP_VTOL_MPC vtol_mpc;
+
+    // MPC state tracking: previous angular rates (for inner-loop model in MPC)
+    Vector3f mpc_omega_prev;
+    // MPC tilt state tracking
+    float mpc_chi_L;  // left tilt angle [rad]
+    float mpc_chi_R;  // right tilt angle [rad]
+    uint32_t mpc_last_update_ms;
+    bool mpc_reset_needed;
+
+    // Run the MPC velocity outer loop (called from hold_hover / vtol_position_controller)
+    // Returns true if MPC produced valid outputs and they were applied.
+    bool run_mpc_velocity_controller(const Vector3f &vel_ref_ned,
+                                     float yaw_ref_rad);
 };
 
 #endif  // HAL_QUADPLANE_ENABLED
