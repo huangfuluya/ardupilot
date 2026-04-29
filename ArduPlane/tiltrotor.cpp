@@ -82,6 +82,9 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("WING_FLAP", 10, Tiltrotor, flap_angle_deg, 0),
 
+    AP_GROUPINFO("GAIN_LEFT", 11, Tiltrotor, _left_gain, 0),
+    AP_GROUPINFO("GAIN_RIGT", 12, Tiltrotor, _right_gain, 0),
+    AP_GROUPINFO("TRIM_GAIN", 13, Tiltrotor, _trim_gain, 0),
     AP_GROUPEND
 };
 
@@ -569,12 +572,13 @@ void Tiltrotor::vectoring(void)
                 float yaw_out = plane.channel_rudder->get_control_in();
                 yaw_out /= plane.channel_rudder->get_range();
                 float yaw_range = zero_out;
-
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  1000 * constrain_float(base_output + yaw_out * yaw_range,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, 1000 * constrain_float(base_output - yaw_out * yaw_range,0,1));
+                const float right = _right_gain * (SRV_Channels::get_output_scaled(SRV_Channel::k_motor1) * (1/4500.0) - motors->get_throttle_hover()) + _trim_gain;
+                const float left  = _left_gain * (SRV_Channels::get_output_scaled(SRV_Channel::k_motor2) * (1/4500.0) - motors->get_throttle_hover()) + _trim_gain;
+                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  1000 * constrain_float(base_output + left + yaw_out * yaw_range,0,1));
+                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, 1000 * constrain_float(base_output + right - yaw_out * yaw_range,0,1));
                 SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,  1000 * constrain_float(base_output + yaw_out * yaw_range,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, 1000 * constrain_float(base_output - yaw_out * yaw_range,0,1));
+                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,  1000 * constrain_float(base_output + left + yaw_out * yaw_range,0,1));
+                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, 1000 * constrain_float(base_output + right - yaw_out * yaw_range,0,1));
             } else {
                 // fixed wing tilt
                 const float gain = fixed_gain * fixed_tilt_limit;
