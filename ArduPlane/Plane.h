@@ -1090,6 +1090,7 @@ private:
     void afs_fs_check(void);
 #endif
     void one_second_loop(void);
+    void dynamic_tune(void);
     void three_hz_loop(void);
 #if AP_AIRSPEED_AUTOCAL_ENABLE
     void airspeed_ratio_update(void);

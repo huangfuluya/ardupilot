@@ -390,8 +390,42 @@ void Plane::one_second_loop()
     rollController.set_notch_sample_rate(loop_rate);
     pitchController.set_notch_sample_rate(loop_rate);
     yawController.set_notch_sample_rate(loop_rate);
+    dynamic_tune();
 }
 
+void Plane::dynamic_tune(void)
+{
+    //读取杆量，然后修改参数
+    RC_Channel* func1_chan = rc().find_channel_for_option(RC_Channel::AUX_FUNC::USER_FUNC1);
+    float min_value1 = 0.01f;
+    float max_value1 = 0.8f;
+    //如果有设置了的话，再执行后面的
+    if(func1_chan!=nullptr){
+        float param_value = (func1_chan->norm_input() * (max_value1 - min_value1) + min_value1);
+        g2.butterfly_dE_factor.set(param_value);
+        gcs().send_text(MAV_SEVERITY::MAV_SEVERITY_INFO,"val1 set to %0.2f", param_value);
+    }
+
+    RC_Channel* func2_chan = rc().find_channel_for_option(RC_Channel::AUX_FUNC::USER_FUNC2);
+    float min_value2 = 0.01f;
+    float max_value2 = 1.2f;
+    //如果有设置了的话，再执行后面的
+    if(func2_chan!=nullptr){
+        float param_value = (func2_chan->norm_input() * (max_value2 - min_value2) + min_value2);
+        g2.butterfly_A_base.set(param_value);
+        gcs().send_text(MAV_SEVERITY::MAV_SEVERITY_INFO,"val2 set to %0.2f", param_value);
+    }
+
+    RC_Channel* func3_chan = rc().find_channel_for_option(RC_Channel::AUX_FUNC::USER_FUNC3);
+    float min_value3 = -0.6f;
+    float max_value3 = 0.6f;
+    //如果有设置了的话，再执行后面的
+    if(func3_chan!=nullptr){
+        float param_value = (func3_chan->norm_input() * (max_value3 - min_value3) + min_value3);
+        g2.butterfly_D_base.set(param_value);
+        gcs().send_text(MAV_SEVERITY::MAV_SEVERITY_INFO,"val3 set to %0.2f", param_value);
+    }
+}
 void Plane::three_hz_loop()
 {
 #if AP_FENCE_ENABLED
