@@ -57,6 +57,10 @@ struct PACKED log_AOA_SSA {
 // @Field: Pitch: achieved vehicle pitch
 // @Field: DesYaw: vehicle desired yaw
 // @Field: Yaw: achieved vehicle yaw
+// @Field: Q1: achieved vehicle attitude quaternion component 1
+// @Field: Q2: achieved vehicle attitude quaternion component 2
+// @Field: Q3: achieved vehicle attitude quaternion component 3
+// @Field: Q4: achieved vehicle attitude quaternion component 4
 // @Field: AEKF: active EKF type
 struct PACKED log_Attitude {
     LOG_PACKET_HEADER;
@@ -67,6 +71,10 @@ struct PACKED log_Attitude {
     float pitch;
     float control_yaw;
     float yaw;
+    float q1;
+    float q2;
+    float q3;
+    float q4;
     uint8_t  active;
 };
 
@@ -161,7 +169,7 @@ struct PACKED log_ATSC {
     { LOG_AOA_SSA_MSG, sizeof(log_AOA_SSA), \
         "AOA", "Qff", "TimeUS,AOA,SSA", "sdd", "F00" , true }, \
     { LOG_ATTITUDE_MSG, sizeof(log_Attitude),\
-        "ATT", "QffffffB", "TimeUS,DesRoll,Roll,DesPitch,Pitch,DesYaw,Yaw,AEKF", "sddddhh-", "F000000-" , true }, \
+        "ATT", "QffffffffffB", "TimeUS,DesRoll,Roll,DesPitch,Pitch,DesYaw,Yaw,Q1,Q2,Q3,Q4,AEKF", "sddddhh-----", "F0000000000-" , true }, \
     { LOG_ORGN_MSG, sizeof(log_ORGN), \
         "ORGN","QBLLe","TimeUS,Type,Lat,Lng,Alt", "s#DUm", "F-GGB" }, \
     { LOG_POS_MSG, sizeof(log_POS), \

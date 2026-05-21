@@ -51,6 +51,9 @@ void AP_AHRS::Write_AOA_SSA(void) const
 // Write an attitude packet, targets in degrees
 void AP_AHRS::Write_Attitude(const Vector3f &targets) const
 {
+    Quaternion current_attitude;
+    get_quat_body_to_ned(current_attitude);
+
     const struct log_Attitude pkt{
         LOG_PACKET_HEADER_INIT(LOG_ATTITUDE_MSG),
         time_us         : AP_HAL::micros64(),
@@ -60,6 +63,10 @@ void AP_AHRS::Write_Attitude(const Vector3f &targets) const
         pitch           : degrees(pitch),
         control_yaw     : wrap_360(targets.z),
         yaw             : wrap_360(degrees(yaw)),
+        q1              : current_attitude.q1,
+        q2              : current_attitude.q2,
+        q3              : current_attitude.q3,
+        q4              : current_attitude.q4,
         active          : uint8_t(active_EKF_type()),
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
@@ -125,6 +132,9 @@ void AP_AHRS::write_video_stabilisation() const
 // Write an attitude view packet, targets in degrees
 void AP_AHRS_View::Write_AttitudeView(const Vector3f &targets) const
 {
+    Quaternion current_attitude;
+    get_quat_body_to_ned(current_attitude);
+
     const struct log_Attitude pkt{
         LOG_PACKET_HEADER_INIT(LOG_ATTITUDE_MSG),
         time_us         : AP_HAL::micros64(),
@@ -134,6 +144,10 @@ void AP_AHRS_View::Write_AttitudeView(const Vector3f &targets) const
         pitch           : degrees(pitch),
         control_yaw     : wrap_360(targets.z),
         yaw             : wrap_360(degrees(yaw)),
+        q1              : current_attitude.q1,
+        q2              : current_attitude.q2,
+        q3              : current_attitude.q3,
+        q4              : current_attitude.q4,
         active          : uint8_t(AP::ahrs().active_EKF_type()),
     };
     AP::logger().WriteBlock(&pkt, sizeof(pkt));
