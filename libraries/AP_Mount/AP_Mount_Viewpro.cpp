@@ -257,6 +257,13 @@ void AP_Mount_Viewpro::process_packet()
         // F1 holds tracker sensor status (which camera, tracking vs lost)
         // B1 section holds actual lean angles
         // D1 section holds camera status including zoom level
+
+        // parse T1 target info
+        _target_dist_source = (TargetDistSource)(_msg_buff[_msg_buff_data_start] & 0x07);
+        _target_lat = (int32_t)be32toh_ptr(&_msg_buff[_msg_buff_data_start + 12]);
+        _target_lng = (int32_t)be32toh_ptr(&_msg_buff[_msg_buff_data_start + 16]);
+        _target_alt_m = (int16_t)be16toh_ptr(&_msg_buff[_msg_buff_data_start + 20]);
+
         //const int8_t servo_status = (_msg_buff[_msg_buff_data_start+24] & 0xF0) >> 4;
         const TrackingStatus tracking_status = (TrackingStatus)((_msg_buff[_msg_buff_data_start+22] & 0x18) >> 3);
         if (tracking_status != _last_tracking_status) {
@@ -941,6 +948,21 @@ bool AP_Mount_Viewpro::get_rangefinder_distance(float& distance_m) const
 bool AP_Mount_Viewpro::set_rangefinder_enable(bool enable)
 {
     return send_camera_command(ImageSensor::NO_ACTION, CameraCommand::NO_ACTION, 0, enable ? LRFCommand::CONTINUOUS_RANGING_START : LRFCommand::STOP_RANGING);
+}
+
+// get target location from gimbal's TGCC calculation. Returns true on success
+bool AP_Mount_Viewpro::get_target_location(int32_t &lat, int32_t &lng, int16_t &alt_m, TargetDistSource &source) const
+{
+    // return false if gimbal is not healthy or no target
+    if (!healthy() || _target_dist_source == TargetDistSource::NONE) {
+        return false;
+    }
+
+    lat = _target_lat;
+    lng = _target_lng;
+    alt_m = _target_alt_m;
+    source = _target_dist_source;
+    return true;
 }
 
 #endif // HAL_MOUNT_VIEWPRO_ENABLED

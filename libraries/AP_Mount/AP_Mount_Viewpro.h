@@ -97,6 +97,9 @@ public:
     // enable/disable rangefinder.  Returns true on success
     bool set_rangefinder_enable(bool enable) override;
 
+    // get target location from gimbal's TGCC calculation.  Returns true on success
+    bool get_target_location(int32_t &lat, int32_t &lng, int16_t &alt_m, TargetDistSource &source) const;
+
 protected:
 
     // Viewpro can send either rates or angles
@@ -220,6 +223,14 @@ private:
         SEARCHING = 0x01,   // searching
         TRACKING = 0x02,    // locked onto a target
         LOST = 0x03,        // lost target
+    };
+
+    // T1 target distance source type (received from gimbal)
+    enum class TargetDistSource : uint8_t {
+        NONE = 0x0,             // no target
+        LASER = 0x1,            // laser rangefinder
+        ISO_ALTITUDE = 0x2,     // iso-altitude estimation
+        RF = 0x3,               // radio frequency (reserved)
     };
 
     // parsing state
@@ -410,6 +421,10 @@ private:
     char _model_name[11] {};                        // model name received from gimbal, always null-terminated
     bool _got_model_name;                           // true once we have received model name
     float _rangefinder_dist_m;                      // latest rangefinder distance (in meters)
+    TargetDistSource _target_dist_source;           // target distance source type from T1
+    int32_t _target_lat;                            // target latitude (1bit = 10^-7 degrees)
+    int32_t _target_lng;                            // target longitude (1bit = 10^-7 degrees)
+    int16_t _target_alt_m;                          // target altitude in meters
 };
 
 #endif // HAL_MOUNT_VIEWPRO_ENABLED
