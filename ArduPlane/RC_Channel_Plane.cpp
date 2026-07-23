@@ -56,6 +56,30 @@ void RC_Channel_Plane::do_aux_function_change_mode(const Mode::Number number,
     }
 }
 
+// do_aux_function_mount_target_follow - switch to guided mode and follow mount's target
+void RC_Channel_Plane::do_aux_function_mount_target_follow(AuxSwitchPos ch_flag)
+{
+    switch(ch_flag) {
+    case AuxSwitchPos::HIGH:
+        // switch to guided mode and enable mount target following
+        if (plane.set_mode(Mode::Number::GUIDED, ModeReason::AUX_FUNCTION)) {
+            plane.mode_guided.set_mount_target_follow(true);
+            gcs().send_text(MAV_SEVERITY_INFO, "Mount target follow ON");
+        } else {
+            gcs().send_text(MAV_SEVERITY_WARNING, "Mount target follow: cannot enter guided");
+        }
+        break;
+    default:
+        // disable following and revert to flight mode switch's mode
+        plane.mode_guided.set_mount_target_follow(false);
+        if (plane.control_mode->mode_number() == Mode::Number::GUIDED) {
+            rc().reset_mode_switch();
+        }
+        gcs().send_text(MAV_SEVERITY_INFO, "Mount target follow OFF");
+        break;
+    }
+}
+
 #if HAL_QUADPLANE_ENABLED
 void RC_Channel_Plane::do_aux_function_q_assist_state(AuxSwitchPos ch_flag)
 {
@@ -172,6 +196,7 @@ void RC_Channel_Plane::init_aux_function(const RC_Channel::AUX_FUNC ch_option,
     case AUX_FUNC::FW_AUTOTUNE:
     case AUX_FUNC::VFWD_THR_OVERRIDE:
     case AUX_FUNC::PRECISION_LOITER:
+    case AUX_FUNC::MOUNT_TARGET_FOLLOW:
 #if QAUTOTUNE_ENABLED
     case AUX_FUNC::AUTOTUNE_TEST_GAINS:
 #endif
@@ -258,6 +283,10 @@ bool RC_Channel_Plane::do_aux_function(const AuxFuncTrigger &trigger)
 
     case AUX_FUNC::GUIDED:
         do_aux_function_change_mode(Mode::Number::GUIDED, ch_flag);
+        break;
+
+    case AUX_FUNC::MOUNT_TARGET_FOLLOW:
+        do_aux_function_mount_target_follow(ch_flag);
         break;
 
     case AUX_FUNC::MANUAL:

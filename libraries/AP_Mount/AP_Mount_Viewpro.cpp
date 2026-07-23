@@ -951,17 +951,16 @@ bool AP_Mount_Viewpro::set_rangefinder_enable(bool enable)
 }
 
 // get target location from gimbal's TGCC calculation. Returns true on success
-bool AP_Mount_Viewpro::get_target_location(int32_t &lat, int32_t &lng, int16_t &alt_m, TargetDistSource &source) const
+bool AP_Mount_Viewpro::get_target_location(Location &target_loc) const
 {
     // return false if gimbal is not healthy or no target
     if (!healthy() || _target_dist_source == TargetDistSource::NONE) {
         return false;
     }
 
-    lat = _target_lat;
-    lng = _target_lng;
-    alt_m = _target_alt_m;
-    source = _target_dist_source;
+    // construct Location from parsed T1 target lat/lng/alt
+    // lat/lng are in 10^-7 degrees (1bit = 10^-7), alt is in meters (1bit = 1m)
+    target_loc = Location(_target_lat, _target_lng, _target_alt_m * 100, Location::AltFrame::ABSOLUTE);
     return true;
 }
 

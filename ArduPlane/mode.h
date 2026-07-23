@@ -384,6 +384,9 @@ public:
 
     void update_target_altitude() override;
 
+    // enable/disable mount target following
+    void set_mount_target_follow(bool enable) { _mount_target_follow = enable; }
+
 #if AP_PLANE_SYSTEMID_ENABLED
     // does this mode support fixed wing systemid?
     bool supports_fw_systemid() const override { return true; }
@@ -399,6 +402,10 @@ protected:
 
 private:
     float active_radius_m;
+
+    // mount target following
+    bool _mount_target_follow = false;          // true if following mount's target
+    uint32_t _last_mount_target_update_ms = 0;  // last time destination was updated from mount target
 };
 
 class ModeCircle: public Mode

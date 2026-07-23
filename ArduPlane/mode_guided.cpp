@@ -24,12 +24,37 @@ bool ModeGuided::_enter()
     active_radius_m = 0;
 
     plane.set_guided_WP(loc);
+
+    // clear mount target following state
+    _mount_target_follow = false;
+
     return true;
 }
 
 void ModeGuided::update()
 {
 #if HAL_QUADPLANE_ENABLED
+    // mount target following: periodically update destination to gimbal's target
+    if (_mount_target_follow) {
+        const uint32_t now_ms = AP_HAL::millis();
+        if (now_ms - _last_mount_target_update_ms >= 1000) {
+            _last_mount_target_update_ms = now_ms;
+            Location target_loc;
+            AP_Mount *mount = AP::mount();
+            if (mount != nullptr && mount->get_target_location(0, target_loc)) {
+                // use target lat/lng but maintain current vehicle altitude
+                target_loc.set_alt_cm(plane.current_loc.alt, plane.current_loc.get_alt_frame());
+                if (plane.auto_state.vtol_loiter) {
+                    // VTOL loiter is active, update target directly to avoid resetting vtol_loiter
+                    plane.next_WP_loc = target_loc;
+                } else {
+                    // initial destination set, triggers normal VTOL startup sequence
+                    handle_guided_request(target_loc);
+                }
+            }
+        }
+    }
+
     if (plane.auto_state.vtol_loiter && plane.quadplane.available()) {
         plane.quadplane.guided_update();
         return;

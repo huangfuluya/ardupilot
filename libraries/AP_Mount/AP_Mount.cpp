@@ -967,6 +967,16 @@ bool AP_Mount::get_rangefinder_distance(uint8_t instance, float& distance_m) con
     return backend->get_rangefinder_distance(distance_m);
 }
 
+// get target location from gimbal.  Returns true on success
+bool AP_Mount::get_target_location(uint8_t instance, Location &target_loc) const
+{
+    auto *backend = get_instance(instance);
+    if (backend == nullptr) {
+        return false;
+    }
+    return backend->get_target_location(target_loc);
+}
+
 // enable/disable rangefinder.  Returns true on success
 bool AP_Mount::set_rangefinder_enable(uint8_t instance, bool enable)
 {

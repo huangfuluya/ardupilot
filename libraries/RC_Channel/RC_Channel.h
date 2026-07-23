@@ -372,6 +372,7 @@ public:
 #if AP_MOUNT_POI_LOCK_ENABLED
         MOUNT_POI_LOCK =     186,  // Lock mount target to current ROI seen and switch mount to GPS Targeting mode
 #endif  // AP_MOUNT_POI_LOCK_ENABLED
+        MOUNT_TARGET_FOLLOW = 187, // fly to above mount's target point
         // inputs from 200 will eventually used to replace RCMAP
         ROLL =               201, // roll input
         PITCH =              202, // pitch input
@@ -423,7 +424,7 @@ public:
 #endif  // AP_SCRIPTING_ENABLED
 
         // this must be higher than any aux function above
-        AUX_FUNCTION_MAX =   317,
+        AUX_FUNCTION_MAX =   318,
     };
 
     // auxiliary switch handling (n.b.: we store this as 2-bits!):

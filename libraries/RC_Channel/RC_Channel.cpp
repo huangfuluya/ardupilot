@@ -252,6 +252,7 @@ const AP_Param::GroupInfo RC_Channel::var_info[] = {
     // @Values{Plane}: 184: System ID Chirp
     // @Values{Copter, Rover, Plane, Blimp, Sub}:  185:Mount Roll/Pitch Lock
     // @Values{Copter, Rover, Plane, Blimp, Sub}:  186:Mount POI Lock
+    // @Values{Plane}: 187:Mount Target Follow
     // @Values{Rover}: 201:Roll
     // @Values{Rover}: 202:Pitch
     // @Values{Rover}: 207:MainSail

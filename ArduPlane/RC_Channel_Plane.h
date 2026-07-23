@@ -20,6 +20,7 @@ private:
 
     void do_aux_function_change_mode(Mode::Number number,
                                      AuxSwitchPos ch_flag);
+    void do_aux_function_mount_target_follow(AuxSwitchPos ch_flag);
 
 #if HAL_QUADPLANE_ENABLED
     void do_aux_function_q_assist_state(AuxSwitchPos ch_flag);

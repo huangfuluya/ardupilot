@@ -106,7 +106,7 @@ public:
     };
 
     // get target location from gimbal's TGCC calculation.  Returns true on success
-    bool get_target_location(int32_t &lat, int32_t &lng, int16_t &alt_m, TargetDistSource &source) const;
+    bool get_target_location(Location &target_loc) const override;
 
 protected:
 

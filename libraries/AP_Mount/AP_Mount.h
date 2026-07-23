@@ -323,6 +323,9 @@ public:
     // get rangefinder distance.  Returns true on success
     bool get_rangefinder_distance(uint8_t instance, float& distance_m) const;
 
+    // get target location from gimbal.  Returns true on success
+    bool get_target_location(uint8_t instance, Location &target_loc) const;
+
     // enable/disable rangefinder.  Returns true on success
     bool set_rangefinder_enable(uint8_t instance, bool enable);
 

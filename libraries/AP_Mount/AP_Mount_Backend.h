@@ -233,6 +233,9 @@ public:
     // get rangefinder distance.  Returns true on success
     virtual bool get_rangefinder_distance(float& distance_m) const { return false; }
 
+    // get target location from gimbal.  Returns true on success
+    virtual bool get_target_location(Location &target_loc) const { return false; }
+
     // enable/disable rangefinder.  Returns true on success
     virtual bool set_rangefinder_enable(bool enable) { return false; }
 
