@@ -620,6 +620,17 @@ void AP_Mount::send_gimbal_manager_status(mavlink_channel_t chan)
         }
     }
 }
+
+// send a CAMERA_TRACKING_GEO_STATUS message to GCS
+void AP_Mount::send_camera_tracking_geo_status(mavlink_channel_t chan) const
+{
+    // call send_camera_tracking_geo_status for each instance
+    for (uint8_t instance=0; instance<AP_MOUNT_MAX_INSTANCES; instance++) {
+        if (_backends[instance] != nullptr) {
+            _backends[instance]->send_camera_tracking_geo_status(chan);
+        }
+    }
+}
 #endif  // HAL_GCS_ENABLED
 
 #if AP_MOUNT_POI_TO_LATLONALT_ENABLED

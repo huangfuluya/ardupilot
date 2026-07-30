@@ -1134,6 +1134,7 @@ ap_message GCS_MAVLINK::mavlink_id_to_ap_message_id(const uint32_t mavlink_id) c
         { MAVLINK_MSG_ID_AUTOPILOT_STATE_FOR_GIMBAL_DEVICE, MSG_AUTOPILOT_STATE_FOR_GIMBAL_DEVICE},
         { MAVLINK_MSG_ID_GIMBAL_MANAGER_INFORMATION, MSG_GIMBAL_MANAGER_INFORMATION},
         { MAVLINK_MSG_ID_GIMBAL_MANAGER_STATUS, MSG_GIMBAL_MANAGER_STATUS},
+        { MAVLINK_MSG_ID_CAMERA_TRACKING_GEO_STATUS, MSG_CAMERA_TRACKING_GEO_STATUS},
 #endif
 #if AP_OPTICALFLOW_ENABLED
         { MAVLINK_MSG_ID_OPTICAL_FLOW,          MSG_OPTICAL_FLOW},
@@ -6179,6 +6180,15 @@ void GCS_MAVLINK::send_gimbal_manager_status() const
     }
     mount->send_gimbal_manager_status(chan);
 }
+
+void GCS_MAVLINK::send_camera_tracking_geo_status() const
+{
+    AP_Mount *mount = AP::mount();
+    if (mount == nullptr) {
+        return;
+    }
+    mount->send_camera_tracking_geo_status(chan);
+}
 #endif
 
 void GCS_MAVLINK::send_set_position_target_global_int(uint8_t target_system, uint8_t target_component, const Location& loc)
@@ -6597,6 +6607,10 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
     case MSG_GIMBAL_MANAGER_STATUS:
         CHECK_PAYLOAD_SIZE(GIMBAL_MANAGER_STATUS);
         send_gimbal_manager_status();
+        break;
+    case MSG_CAMERA_TRACKING_GEO_STATUS:
+        CHECK_PAYLOAD_SIZE(CAMERA_TRACKING_GEO_STATUS);
+        send_camera_tracking_geo_status();
         break;
 #endif  // HAL_MOUNT_ENABLED
 

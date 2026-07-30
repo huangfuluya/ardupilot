@@ -236,6 +236,9 @@ public:
     // get target location from gimbal.  Returns true on success
     virtual bool get_target_location(Location &target_loc) const { return false; }
 
+    // send camera tracking geo status message to GCS
+    virtual void send_camera_tracking_geo_status(mavlink_channel_t chan) const {}
+
     // enable/disable rangefinder.  Returns true on success
     virtual bool set_rangefinder_enable(bool enable) { return false; }
 

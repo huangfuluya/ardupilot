@@ -228,6 +228,9 @@ public:
     // send a GIMBAL_MANAGER_STATUS message to GCS
     void send_gimbal_manager_status(mavlink_channel_t chan);
 
+    // send a CAMERA_TRACKING_GEO_STATUS message to GCS
+    void send_camera_tracking_geo_status(mavlink_channel_t chan) const;
+
 #if AP_MOUNT_POI_TO_LATLONALT_ENABLED
     // get poi information.  Returns true on success and fills in gimbal attitude, location and poi location
     bool get_poi(uint8_t instance, Quaternion &quat, Location &loc, Location &poi_loc) const;

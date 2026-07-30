@@ -65,11 +65,17 @@ void AP_Mount_Viewpro::update()
     // send handshake
     send_handshake();
 
-    // send vehicle attitude and position
-    send_m_ahrs();
+    // send vehicle attitude and position, but skip during active tracking.
+    // the M_AHRS packet carries the vehicle yaw which the gimbal may use
+    // for follow-yaw, conflicting with the gimbal's internal tracker and
+    // causing severe oscillation.
+    const bool tracking_active = (_last_tracking_status == TrackingStatus::SEARCHING || _last_tracking_status == TrackingStatus::TRACKING);
+    if (!tracking_active) {
+        send_m_ahrs();
+    }
 
     // if tracking is active we do not send new targets to the gimbal
-    if (_last_tracking_status == TrackingStatus::SEARCHING || _last_tracking_status == TrackingStatus::TRACKING) {
+    if (tracking_active) {
         return;
     }
 
@@ -265,7 +271,11 @@ void AP_Mount_Viewpro::process_packet()
         _target_alt_m = (int16_t)be16toh_ptr(&_msg_buff[_msg_buff_data_start + 20]);
 
         //const int8_t servo_status = (_msg_buff[_msg_buff_data_start+24] & 0xF0) >> 4;
-        const TrackingStatus tracking_status = (TrackingStatus)((_msg_buff[_msg_buff_data_start+22] & 0x18) >> 3);
+        const uint8_t f1_byte = _msg_buff[_msg_buff_data_start+22];
+        const TrackingStatus tracking_status = (TrackingStatus)((f1_byte & 0x18) >> 3);
+        // diagnostic: log raw F1 byte and parsed status to help diagnose
+        // intermittent tracking oscillation (status flipping, bad bit mask, etc.)
+        debug("F1 raw:0x%02x track_st:%u rxavail:%u", (unsigned)f1_byte, (unsigned)tracking_status, (unsigned)_uart->available());
         if (tracking_status != _last_tracking_status) {
             _last_tracking_status = tracking_status;
             switch (tracking_status) {
@@ -281,6 +291,23 @@ void AP_Mount_Viewpro::process_packet()
             case TrackingStatus::LOST:
                 GCS_SEND_TEXT(MAV_SEVERITY_INFO, "%s tracking Lost", send_text_prefix);
                 break;
+            }
+            // when entering searching or tracking state, switch the gimbal
+            // servo status to TRACKING_MODE (0x06).  this tells the gimbal
+            // that its internal tracker should take full control of yaw and
+            // pitch.  without this, the gimbal may remain in the last manual
+            // mode (MANUAL_SPEED_MODE / MANUAL_ABSOLUTE_ANGLE_MODE) or
+            // FOLLOW_YAW, simultaneously executing the stale ArduPilot
+            // target and/or following the vehicle yaw from M_AHRS packets,
+            // causing severe oscillation.
+            if (tracking_status == TrackingStatus::SEARCHING || tracking_status == TrackingStatus::TRACKING) {
+                const A1Packet a1_packet {
+                    .content = {
+                        frame_id: FrameId::A1,
+                        servo_status: ServoStatus::TRACKING_MODE
+                    }
+                };
+                send_packet(a1_packet.bytes, sizeof(a1_packet.bytes));
             }
         }
 
@@ -614,7 +641,7 @@ bool AP_Mount_Viewpro::send_m_ahrs()
     // get current location
     Location loc;
     int32_t alt_amsl_cm = 0;
-    if (!AP::ahrs().get_location(loc) || !loc.get_alt_cm(Location::AltFrame::ABSOLUTE, alt_amsl_cm)) {
+    if (!AP::ahrs().get_location(loc) || !loc.get_alt_cm(Location::AltFrame::ABOVE_ORIGIN, alt_amsl_cm)) {
         return false;
     }
 
@@ -962,6 +989,39 @@ bool AP_Mount_Viewpro::get_target_location(Location &target_loc) const
     // lat/lng are in 10^-7 degrees (1bit = 10^-7), alt is in meters (1bit = 1m)
     target_loc = Location(_target_lat, _target_lng, _target_alt_m * 100, Location::AltFrame::ABSOLUTE);
     return true;
+}
+
+// send camera tracking geo status message to GCS
+void AP_Mount_Viewpro::send_camera_tracking_geo_status(mavlink_channel_t chan) const
+{
+    // only send when tracking is active
+    if (_last_tracking_status != TrackingStatus::TRACKING) {
+        return;
+    }
+
+    // return if gimbal is not healthy or no target
+    if (!healthy() || _target_dist_source == TargetDistSource::NONE) {
+        return;
+    }
+
+    // distance from rangefinder if available
+    const float dist = is_positive(_rangefinder_dist_m) ? _rangefinder_dist_m : NaNf;
+
+    mavlink_msg_camera_tracking_geo_status_send(
+        chan,
+        1,              // tracking_status: 1 = tracking active
+        _target_lat,    // latitude in degE7
+        _target_lng,    // longitude in degE7
+        _target_alt_m,  // altitude in meters (AMSL)
+        NaNf,           // horizontal accuracy, unknown
+        NaNf,           // vertical accuracy, unknown
+        NaNf,           // velocity north, unknown
+        NaNf,           // velocity east, unknown
+        NaNf,           // velocity down, unknown
+        NaNf,           // velocity accuracy, unknown
+        dist,           // distance to target from rangefinder
+        NaNf,           // heading, unknown
+        NaNf);          // heading accuracy, unknown
 }
 
 #endif // HAL_MOUNT_VIEWPRO_ENABLED

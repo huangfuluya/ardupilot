@@ -56,25 +56,22 @@ void RC_Channel_Plane::do_aux_function_change_mode(const Mode::Number number,
     }
 }
 
-// do_aux_function_mount_target_follow - switch to guided mode and follow mount's target
+// do_aux_function_mount_target_follow - follow mount's target when in guided mode
 void RC_Channel_Plane::do_aux_function_mount_target_follow(AuxSwitchPos ch_flag)
 {
     switch(ch_flag) {
     case AuxSwitchPos::HIGH:
-        // switch to guided mode and enable mount target following
-        if (plane.set_mode(Mode::Number::GUIDED, ModeReason::AUX_FUNCTION)) {
+        // only enable mount target following if already in guided mode
+        if (plane.control_mode->mode_number() == Mode::Number::GUIDED) {
             plane.mode_guided.set_mount_target_follow(true);
             gcs().send_text(MAV_SEVERITY_INFO, "Mount target follow ON");
         } else {
-            gcs().send_text(MAV_SEVERITY_WARNING, "Mount target follow: cannot enter guided");
+            gcs().send_text(MAV_SEVERITY_WARNING, "Mount target follow: guided mode required");
         }
         break;
     default:
-        // disable following and revert to flight mode switch's mode
+        // disable following
         plane.mode_guided.set_mount_target_follow(false);
-        if (plane.control_mode->mode_number() == Mode::Number::GUIDED) {
-            rc().reset_mode_switch();
-        }
         gcs().send_text(MAV_SEVERITY_INFO, "Mount target follow OFF");
         break;
     }

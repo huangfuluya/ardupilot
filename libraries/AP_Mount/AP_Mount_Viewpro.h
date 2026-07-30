@@ -108,6 +108,9 @@ public:
     // get target location from gimbal's TGCC calculation.  Returns true on success
     bool get_target_location(Location &target_loc) const override;
 
+    // send camera tracking geo status message to GCS
+    void send_camera_tracking_geo_status(mavlink_channel_t chan) const override;
+
 protected:
 
     // Viewpro can send either rates or angles
@@ -148,8 +151,9 @@ private:
     enum class ServoStatus : uint8_t {
         MANUAL_SPEED_MODE = 0x01,
         FOLLOW_YAW = 0x03,
-        MANUAL_ABSOLUTE_ANGLE_MODE = 0x0B,
+        TRACKING_MODE = 0x06,          // tracking mode, gimbal controlled by internal tracker
         FOLLOW_YAW_DISABLE = 0x0A,
+        MANUAL_ABSOLUTE_ANGLE_MODE = 0x0B,
     };
 
     // C1 image sensor choice
