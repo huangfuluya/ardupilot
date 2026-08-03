@@ -329,6 +329,9 @@ public:
     // get target location from gimbal.  Returns true on success
     bool get_target_location(uint8_t instance, Location &target_loc) const;
 
+    // returns true if mount is actively tracking a target
+    bool is_tracking_target(uint8_t instance) const;
+
     // enable/disable rangefinder.  Returns true on success
     bool set_rangefinder_enable(uint8_t instance, bool enable);
 

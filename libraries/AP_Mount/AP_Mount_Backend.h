@@ -236,6 +236,9 @@ public:
     // get target location from gimbal.  Returns true on success
     virtual bool get_target_location(Location &target_loc) const { return false; }
 
+    // returns true if mount is actively tracking a target
+    virtual bool is_tracking_target() const { return false; }
+
     // send camera tracking geo status message to GCS
     virtual void send_camera_tracking_geo_status(mavlink_channel_t chan) const {}
 

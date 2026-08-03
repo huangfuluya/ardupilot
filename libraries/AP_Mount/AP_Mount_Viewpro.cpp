@@ -28,7 +28,7 @@ extern const AP_HAL::HAL& hal;
 #define AP_MOUNT_VIEWPRO_SENSOR_W_MM    6.17f   // assumed sensor width (1/2.3" sensor)
 #define AP_MOUNT_VIEWPRO_SENSOR_H_MM    4.55f   // assumed sensor height (1/2.3" sensor)
 
-#define AP_MOUNT_VIEWPRO_DEBUG 1
+#define AP_MOUNT_VIEWPRO_DEBUG 0
 #define debug(fmt, args ...) do { if (AP_MOUNT_VIEWPRO_DEBUG) { GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Viewpro: " fmt, ## args); } } while (0)
 
 const char* AP_Mount_Viewpro::send_text_prefix = "Viewpro:";
@@ -72,9 +72,7 @@ void AP_Mount_Viewpro::update()
     // for follow-yaw, conflicting with the gimbal's internal tracker and
     // causing severe oscillation.
     const bool tracking_active = (_last_tracking_status == TrackingStatus::SEARCHING || _last_tracking_status == TrackingStatus::TRACKING);
-    if (!tracking_active) {
-        send_m_ahrs();
-    }
+    send_m_ahrs();
 
     // if tracking is active we do not send new targets to the gimbal
     if (tracking_active) {
@@ -266,18 +264,24 @@ void AP_Mount_Viewpro::process_packet()
         // B1 section holds actual lean angles
         // D1 section holds camera status including zoom level
 
-        // parse T1 target info
-        _target_dist_source = (TargetDistSource)(_msg_buff[_msg_buff_data_start] & 0x07);
-        _target_lat = (int32_t)be32toh_ptr(&_msg_buff[_msg_buff_data_start + 12]);
-        _target_lng = (int32_t)be32toh_ptr(&_msg_buff[_msg_buff_data_start + 16]);
-        _target_alt_m = (int16_t)be16toh_ptr(&_msg_buff[_msg_buff_data_start + 20]);
-
-        //const int8_t servo_status = (_msg_buff[_msg_buff_data_start+24] & 0xF0) >> 4;
+        // parse tracking status first so we can decide whether to update target position
         const uint8_t f1_byte = _msg_buff[_msg_buff_data_start+22];
         const TrackingStatus tracking_status = (TrackingStatus)((f1_byte & 0x18) >> 3);
         // diagnostic: log raw F1 byte and parsed status to help diagnose
         // intermittent tracking oscillation (status flipping, bad bit mask, etc.)
-        debug("F1 raw:0x%02x track_st:%u rxavail:%u", (unsigned)f1_byte, (unsigned)tracking_status, (unsigned)_uart->available());
+        // debug("F1 raw:0x%02x track_st:%u rxavail:%u", (unsigned)f1_byte, (unsigned)tracking_status, (unsigned)_uart->available());
+
+        // only update target position when actively tracking;
+        // when not tracking, the target lat/lng/alt in the packet may be stale
+        // or invalid; keep the last known valid tracking position
+        if (tracking_status == TrackingStatus::TRACKING) {
+            _target_dist_source = (TargetDistSource)(_msg_buff[_msg_buff_data_start] & 0x07);
+            _target_lat = (int32_t)be32toh_ptr(&_msg_buff[_msg_buff_data_start + 12]);
+            _target_lng = (int32_t)be32toh_ptr(&_msg_buff[_msg_buff_data_start + 16]);
+            _target_alt_m = (int16_t)be16toh_ptr(&_msg_buff[_msg_buff_data_start + 20]);
+        }
+
+        //const int8_t servo_status = (_msg_buff[_msg_buff_data_start+24] & 0xF0) >> 4;
         if (tracking_status != _last_tracking_status) {
             _last_tracking_status = tracking_status;
             switch (tracking_status) {
@@ -317,7 +321,7 @@ void AP_Mount_Viewpro::process_packet()
         _current_angle_rad.x = radians((int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+23] & 0x0F, _msg_buff[_msg_buff_data_start+24]) * (180.0/4095.0) - 90.0);   // roll angle
         _current_angle_rad.z = radians((int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+25], _msg_buff[_msg_buff_data_start+26]) * AP_MOUNT_VIEWPRO_OUTPUT_TO_DEG); // yaw angle
         _current_angle_rad.y = -radians((int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+27], _msg_buff[_msg_buff_data_start+28]) * AP_MOUNT_VIEWPRO_OUTPUT_TO_DEG); // pitch angle
-        debug("r:%4.1f p:%4.1f y:%4.1f", (double)degrees(_current_angle_rad.x), (double)degrees(_current_angle_rad.y), (double)degrees(_current_angle_rad.z));
+        // debug("r:%4.1f p:%4.1f y:%4.1f", (double)degrees(_current_angle_rad.x), (double)degrees(_current_angle_rad.y), (double)degrees(_current_angle_rad.z));
 
         // get active image sensor. D1's image sensor values are one value lower than C1's
         _image_sensor = ImageSensor((_msg_buff[_msg_buff_data_start+29] & 0x07) + 1);
@@ -354,7 +358,7 @@ void AP_Mount_Viewpro::process_packet()
     }
 
     default:
-        debug("Unhandled FrameId:%u", (unsigned)_parsed_msg.frame_id);
+        // debug("Unhandled FrameId:%u", (unsigned)_parsed_msg.frame_id);
         break;
     }
 }
@@ -389,13 +393,13 @@ bool AP_Mount_Viewpro::send_packet(const uint8_t* databuff, uint8_t databuff_len
     // calculate and sanity check packet size
     const uint16_t packet_size = AP_MOUNT_VIEWPRO_PACKETLEN_MIN + databuff_len;
     if (packet_size > AP_MOUNT_VIEWPRO_PACKETLEN_MAX) {
-        debug("send_packet data buff too large");
+        // debug("send_packet data buff too large");
         return false;
     }
 
     // check for sufficient space in outgoing buffer
     if (_uart->txspace() < packet_size) {
-        debug("tx space too low (%u < %u)", (unsigned)_uart->txspace(), (unsigned)packet_size);
+        // debug("tx space too low (%u < %u)", (unsigned)_uart->txspace(), (unsigned)packet_size);
         return false;
     }
 
@@ -648,7 +652,7 @@ bool AP_Mount_Viewpro::send_m_ahrs()
     // get current location
     Location loc;
     int32_t alt_amsl_cm = 0;
-    if (!AP::ahrs().get_location(loc) || !loc.get_alt_cm(Location::AltFrame::ABOVE_ORIGIN, alt_amsl_cm)) {
+    if (!AP::ahrs().get_location(loc) || !loc.get_alt_cm(Location::AltFrame::ABSOLUTE, alt_amsl_cm)) {
         return false;
     }
 
@@ -981,7 +985,6 @@ void AP_Mount_Viewpro::send_camera_settings(mavlink_channel_t chan) const
 // get rangefinder distance.  Returns true on success
 bool AP_Mount_Viewpro::get_rangefinder_distance(float& distance_m) const
 {
-    // if not healthy or zero distance return false
     // healthy() checks attitude timeout which is in same message as rangefinder distance
     if (!healthy()) {
         return false;
@@ -1000,8 +1003,8 @@ bool AP_Mount_Viewpro::set_rangefinder_enable(bool enable)
 // get target location from gimbal's TGCC calculation. Returns true on success
 bool AP_Mount_Viewpro::get_target_location(Location &target_loc) const
 {
-    // return false if gimbal is not healthy or no target
-    if (!healthy() || _target_dist_source == TargetDistSource::NONE) {
+    // return false if gimbal is not healthy
+    if (!healthy()) {
         return false;
     }
 
@@ -1011,42 +1014,40 @@ bool AP_Mount_Viewpro::get_target_location(Location &target_loc) const
     return true;
 }
 
+// returns true if mount is actively tracking a target
+bool AP_Mount_Viewpro::is_tracking_target() const
+{
+    return (_last_tracking_status == TrackingStatus::TRACKING);
+}
+
 // send camera tracking geo status message to GCS
 void AP_Mount_Viewpro::send_camera_tracking_geo_status(mavlink_channel_t chan) const
 {
-    // only send when tracking is active
-    if (_last_tracking_status != TrackingStatus::TRACKING) {
-        debug("send_camera_tracking_geo_status: skip, tracking_status=%d", (int)_last_tracking_status);
-        return;
-    }
-
-    // return if gimbal is not healthy or no target
-    if (!healthy() || _target_dist_source == TargetDistSource::NONE) {
-        debug("send_camera_tracking_geo_status: skip, healthy=%d dist_src=%d", healthy(), (int)_target_dist_source);
-        return;
-    }
+    // use last known tracking status; keep sending cached data even when not actively tracking
+    const bool is_tracking = (_last_tracking_status == TrackingStatus::TRACKING);
+    const uint8_t tracking_status = is_tracking ? 1 : 0;
 
     // distance from rangefinder if available
     const float dist = is_positive(_rangefinder_dist_m) ? _rangefinder_dist_m : NaNf;
 
-    debug("send_camera_tracking_geo_status: lat=%.7f lng=%.7f alt=%.1fm dist=%.1fm",
-          _target_lat * 1e-7, _target_lng * 1e-7, (double)_target_alt_m, (double)dist);
+    // debug("send_camera_tracking_geo_status: lat=%.7f lng=%.7f alt=%.1fm dist=%.1fm tracking=%d",
+        //   _target_lat * 1e-7, _target_lng * 1e-7, (double)_target_alt_m, (double)dist, tracking_status);
 
     mavlink_msg_camera_tracking_geo_status_send(
         chan,
-        1,              // tracking_status: 1 = tracking active
-        _target_lat,    // latitude in degE7
-        _target_lng,    // longitude in degE7
-        _target_alt_m,  // altitude in meters (AMSL)
-        NaNf,           // horizontal accuracy, unknown
-        NaNf,           // vertical accuracy, unknown
-        NaNf,           // velocity north, unknown
-        NaNf,           // velocity east, unknown
-        NaNf,           // velocity down, unknown
-        NaNf,           // velocity accuracy, unknown
-        dist,           // distance to target from rangefinder
-        NaNf,           // heading, unknown
-        NaNf);          // heading accuracy, unknown
+        tracking_status,    // 1 = tracking active, 0 = not tracking (cached data)
+        _target_lat,        // latitude in degE7
+        _target_lng,        // longitude in degE7
+        _target_alt_m,      // altitude in meters (AMSL)
+        NaNf,               // horizontal accuracy, unknown
+        NaNf,               // vertical accuracy, unknown
+        NaNf,               // velocity north, unknown
+        NaNf,               // velocity east, unknown
+        NaNf,               // velocity down, unknown
+        NaNf,               // velocity accuracy, unknown
+        dist,               // distance to target from rangefinder
+        NaNf,               // heading, unknown
+        NaNf);              // heading accuracy, unknown
 }
 
 #endif // HAL_MOUNT_VIEWPRO_ENABLED

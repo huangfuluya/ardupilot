@@ -27,6 +27,9 @@ bool ModeGuided::_enter()
 
     // clear mount target following state
     _mount_target_follow = false;
+    _mount_target_follow_alt_locked = false;
+    _mount_target_lost_start_ms = 0;
+    _mount_target_lost_loiter_set = false;
 
     return true;
 }
@@ -41,15 +44,40 @@ void ModeGuided::update()
             _last_mount_target_update_ms = now_ms;
             Location target_loc;
             AP_Mount *mount = AP::mount();
-            if (mount != nullptr && mount->get_target_location(0, target_loc)) {
-                // use target lat/lng but maintain current vehicle altitude
-                target_loc.set_alt_cm(plane.current_loc.alt, plane.current_loc.get_alt_frame());
-                if (plane.auto_state.vtol_loiter) {
-                    // VTOL loiter is active, update target directly to avoid resetting vtol_loiter
-                    plane.next_WP_loc = target_loc;
-                } else {
-                    // initial destination set, triggers normal VTOL startup sequence
-                    handle_guided_request(target_loc);
+            if (mount != nullptr && mount->is_tracking_target(0)) {
+                // tracking is active, reset lost timer
+                _mount_target_lost_start_ms = 0;
+                _mount_target_lost_loiter_set = false;
+                if (mount->get_target_location(0, target_loc)) {
+                    // lock altitude on first activation, then maintain that altitude
+                    if (!_mount_target_follow_alt_locked) {
+                        _mount_target_follow_alt_cm = plane.current_loc.alt;
+                        _mount_target_follow_alt_locked = true;
+                    }
+                    // use target lat/lng but maintain locked altitude
+                    target_loc.set_alt_cm(_mount_target_follow_alt_cm, plane.current_loc.get_alt_frame());
+                    if (plane.auto_state.vtol_loiter) {
+                        // VTOL loiter is active, update target directly to avoid resetting vtol_loiter
+                        plane.next_WP_loc = target_loc;
+                    } else {
+                        // initial destination set, triggers normal VTOL startup sequence
+                        handle_guided_request(target_loc);
+                    }
+                }
+            } else {
+                // tracking is not active (lost, searching, or stopped)
+                if (_mount_target_lost_start_ms == 0) {
+                    // first time we noticed tracking loss, start timer
+                    _mount_target_lost_start_ms = now_ms;
+                } else if (now_ms - _mount_target_lost_start_ms > 5000 && !_mount_target_lost_loiter_set) {
+                    // tracking lost for more than 5 seconds, set loiter at current position
+                    _mount_target_lost_loiter_set = true;
+                    Location loiter_loc{plane.current_loc};
+                    if (_mount_target_follow_alt_locked) {
+                        loiter_loc.set_alt_cm(_mount_target_follow_alt_cm, plane.current_loc.get_alt_frame());
+                    }
+                    handle_guided_request(loiter_loc);
+                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Mount target lost, loitering at current position");
                 }
             }
         }

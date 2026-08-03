@@ -385,7 +385,12 @@ public:
     void update_target_altitude() override;
 
     // enable/disable mount target following
-    void set_mount_target_follow(bool enable) { _mount_target_follow = enable; }
+    void set_mount_target_follow(bool enable) {
+        _mount_target_follow = enable;
+        if (!enable) {
+            _mount_target_follow_alt_locked = false;
+        }
+    }
 
 #if AP_PLANE_SYSTEMID_ENABLED
     // does this mode support fixed wing systemid?
@@ -406,6 +411,10 @@ private:
     // mount target following
     bool _mount_target_follow = false;          // true if following mount's target
     uint32_t _last_mount_target_update_ms = 0;  // last time destination was updated from mount target
+    int32_t _mount_target_follow_alt_cm;         // altitude locked when mount target follow was activated
+    bool _mount_target_follow_alt_locked;        // true if altitude has been locked
+    uint32_t _mount_target_lost_start_ms;        // time when tracking target was first lost (0 = tracking)
+    bool _mount_target_lost_loiter_set;          // true if loiter has been set after target loss
 };
 
 class ModeCircle: public Mode
