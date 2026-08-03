@@ -327,7 +327,8 @@ private:
         struct PACKED {
             FrameId frame_id;           // always 0xB1
             uint8_t data_type;          // should be 0x07.  Bit0: Attitude, Bit1: GPS, Bit2 Gyro
-            uint8_t unused2to8[7];      // unused
+            uint8_t reserved2to4[3];    // reserved bytes 2~4 in protocol
+            be32_t rel_height_be;       // relative height (height above home).  1bit = 1mm, signed int32
             be16_t roll_be;             // vehicle roll angle.  1bit=360deg/65536
             be16_t pitch_be;            // vehicle pitch angle.  1bit=360deg/65536
             be16_t yaw_be;              // vehicle yaw angle.  1bit=360deg/65536
@@ -420,6 +421,8 @@ private:
     TrackingStatus _last_tracking_status;           // last tracking status received from gimbal (used to notify users)
     ImageSensor _image_sensor;                      // user selected image sensor (aka camera lens)
     float _zoom_times;                              // zoom times received from gimbal
+    float _hfov_deg;                                // horizontal field of view in degrees (from D1)
+    float _vfov_deg;                                // vertical field of view in degrees (from D1)
     uint32_t _firmware_version;                     // firmware version from gimbal
     bool _got_firmware_version;                     // true once we have received the firmware version
     char _model_name[11] {};                        // model name received from gimbal, always null-terminated

@@ -25,8 +25,10 @@ extern const AP_HAL::HAL& hal;
 #define AP_MOUNT_VIEWPRO_ZOOM_MAX       10      // hard-coded absolute zoom times max
 #define AP_MOUNT_VIEWPRO_DEG_TO_OUTPUT  (65536.0 / 360.0)   // scalar to convert degrees to the viewpro angle scaling
 #define AP_MOUNT_VIEWPRO_OUTPUT_TO_DEG  (360.0 / 65536.0)   // scalar to convert viewpro angle scaling to degrees
+#define AP_MOUNT_VIEWPRO_SENSOR_W_MM    6.17f   // assumed sensor width (1/2.3" sensor)
+#define AP_MOUNT_VIEWPRO_SENSOR_H_MM    4.55f   // assumed sensor height (1/2.3" sensor)
 
-#define AP_MOUNT_VIEWPRO_DEBUG 0
+#define AP_MOUNT_VIEWPRO_DEBUG 1
 #define debug(fmt, args ...) do { if (AP_MOUNT_VIEWPRO_DEBUG) { GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Viewpro: " fmt, ## args); } } while (0)
 
 const char* AP_Mount_Viewpro::send_text_prefix = "Viewpro:";
@@ -341,8 +343,13 @@ void AP_Mount_Viewpro::process_packet()
                 _zoom_times = ((_msg_buff[_msg_buff_data_start+29] >> 3) & 0x0F) + 1;
                 break;
         }        
-        // get laser rangefinder distance
-        _rangefinder_dist_m = UINT16_VALUE(_msg_buff[_msg_buff_data_start+33], _msg_buff[_msg_buff_data_start+34]) * 0.1;
+        // get laser rangefinder distance (3 bytes since protocol v3.4.5, backward-compatible with older 2-byte format)
+        _rangefinder_dist_m = (((uint32_t)_msg_buff[_msg_buff_data_start+30] << 16) |
+                               UINT16_VALUE(_msg_buff[_msg_buff_data_start+33], _msg_buff[_msg_buff_data_start+34])) * 0.1f;
+
+        // parse FOV from D1 bytes 6~9 (1bit = 0.01 deg)
+        _vfov_deg = UINT16_VALUE(_msg_buff[_msg_buff_data_start+35], _msg_buff[_msg_buff_data_start+36]) * 0.01f;
+        _hfov_deg = UINT16_VALUE(_msg_buff[_msg_buff_data_start+37], _msg_buff[_msg_buff_data_start+38]) * 0.01f;
         break;
     }
 
@@ -919,23 +926,36 @@ void AP_Mount_Viewpro::send_camera_information(mavlink_channel_t chan) const
                            CAMERA_CAP_FLAGS_HAS_TRACKING_POINT |
                            CAMERA_CAP_FLAGS_HAS_TRACKING_RECTANGLE;
 
+    // compute focal_length from FOV and assumed sensor size
+    float focal_length = NaNf;
+    float sensor_size_h = NaNf;
+    float sensor_size_v = NaNf;
+    if (is_positive(_hfov_deg) && is_positive(_vfov_deg)) {
+        sensor_size_h = AP_MOUNT_VIEWPRO_SENSOR_W_MM;
+        sensor_size_v = AP_MOUNT_VIEWPRO_SENSOR_H_MM;
+        // f = sensor_width / (2 * tan(hfov / 2))
+        const float focal_h = sensor_size_h / (2.0f * tanf(radians(_hfov_deg * 0.5f)));
+        const float focal_v = sensor_size_v / (2.0f * tanf(radians(_vfov_deg * 0.5f)));
+        focal_length = (focal_h + focal_v) * 0.5f;
+    }
+
     // send CAMERA_INFORMATION message
     mavlink_msg_camera_information_send(
         chan,
         AP_HAL::millis(),       // time_boot_ms
         vendor_name,            // vendor_name uint8_t[32]
         model_name,             // model_name uint8_t[32]
-        _firmware_version,      // firmware version uint32_t
-        NaNf,                   // sensor_size_h float (mm)
-        NaNf,                   // sensor_size_v float (mm)
-        0,                      // sensor_size_v float (mm)
-        0,                      // resolution_h uint16_t (pix)
-        0,                      // resolution_v uint16_t (pix)
-        (uint8_t)_image_sensor, // lens_id uint8_t
-        flags,                  // flags uint32_t (CAMERA_CAP_FLAGS)
-        0,                      // cam_definition_version uint16_t
-        cam_definition_uri,     // cam_definition_uri char[140]
-        _instance + 1);         // gimbal_device_id uint8_t
+        _firmware_version,      // firmware_version
+        focal_length,           // focal_length [mm]
+        sensor_size_h,          // sensor_size_h [mm]
+        sensor_size_v,          // sensor_size_v [mm]
+        0,                      // resolution_h [pix] (unknown, requires D2)
+        0,                      // resolution_v [pix] (unknown, requires D2)
+        (uint8_t)_image_sensor, // lens_id
+        flags,                  // flags
+        0,                      // cam_definition_version
+        cam_definition_uri,     // cam_definition_uri
+        _instance + 1);         // gimbal_device_id
 }
 
 // send camera settings message to GCS
@@ -996,16 +1016,21 @@ void AP_Mount_Viewpro::send_camera_tracking_geo_status(mavlink_channel_t chan) c
 {
     // only send when tracking is active
     if (_last_tracking_status != TrackingStatus::TRACKING) {
+        debug("send_camera_tracking_geo_status: skip, tracking_status=%d", (int)_last_tracking_status);
         return;
     }
 
     // return if gimbal is not healthy or no target
     if (!healthy() || _target_dist_source == TargetDistSource::NONE) {
+        debug("send_camera_tracking_geo_status: skip, healthy=%d dist_src=%d", healthy(), (int)_target_dist_source);
         return;
     }
 
     // distance from rangefinder if available
     const float dist = is_positive(_rangefinder_dist_m) ? _rangefinder_dist_m : NaNf;
+
+    debug("send_camera_tracking_geo_status: lat=%.7f lng=%.7f alt=%.1fm dist=%.1fm",
+          _target_lat * 1e-7, _target_lng * 1e-7, (double)_target_alt_m, (double)dist);
 
     mavlink_msg_camera_tracking_geo_status_send(
         chan,

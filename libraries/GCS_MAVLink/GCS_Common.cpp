@@ -7113,6 +7113,9 @@ void GCS_MAVLINK::initialise_message_intervals_from_streamrates()
             initialise_message_intervals_for_stream(all_stream_entries[i].stream_id);
         }
         set_mavlink_message_id_interval(MAVLINK_MSG_ID_HEARTBEAT, 1000);
+#if HAL_MOUNT_ENABLED
+        set_ap_message_interval(MSG_CAMERA_TRACKING_GEO_STATUS, 1000);
+#endif
     } else {
         set_mavlink_message_id_interval(MAVLINK_MSG_ID_HIGH_LATENCY2, 5000);
     }
@@ -7122,6 +7125,9 @@ void GCS_MAVLINK::initialise_message_intervals_from_streamrates()
         initialise_message_intervals_for_stream(all_stream_entries[i].stream_id);
     }
     set_mavlink_message_id_interval(MAVLINK_MSG_ID_HEARTBEAT, 1000);
+#if HAL_MOUNT_ENABLED
+    set_ap_message_interval(MSG_CAMERA_TRACKING_GEO_STATUS, 1000);
+#endif
 #endif
 }
 
@@ -7137,6 +7143,14 @@ bool GCS_MAVLINK::get_default_interval_for_ap_message(const ap_message id, uint1
     if (id == MSG_HIGH_LATENCY2) {
         // handle HL2 requests as a special case because HL2 is not "streamed"
         interval = 5000;
+        return true;
+    }
+#endif
+
+#if HAL_MOUNT_ENABLED
+    if (id == MSG_CAMERA_TRACKING_GEO_STATUS) {
+        // send at fixed 1Hz, independent of stream rates
+        interval = 1000;
         return true;
     }
 #endif
