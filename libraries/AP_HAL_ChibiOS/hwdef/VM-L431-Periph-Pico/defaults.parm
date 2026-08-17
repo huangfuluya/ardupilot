@@ -1,0 +1,10 @@
+# VM-L431-Periph-Pico XL-H100 mmWave radar to DroneCAN converter defaults
+
+# rangefinder on TELEM2 (USART2), XL-H100 default serial baud is 921600
+RNGFND_PORT 2
+RNGFND_BAUDRATE 921600
+
+# XL-H100 radar, 0.1 to 100m range
+RNGFND1_TYPE 49
+RNGFND1_MIN 0.1
+RNGFND1_MAX 100
