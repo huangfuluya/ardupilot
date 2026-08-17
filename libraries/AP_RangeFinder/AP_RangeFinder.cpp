@@ -32,6 +32,7 @@
 #include "AP_RangeFinder_MAVLink.h"
 #include "AP_RangeFinder_LeddarOne.h"
 #include "AP_RangeFinder_USD1_Serial.h"
+#include "AP_RangeFinder_XLH100_Serial.h"
 #include "AP_RangeFinder_TeraRangerI2C.h"
 #include "AP_RangeFinder_TeraRanger_Serial.h"
 #include "AP_RangeFinder_VL53L0X.h"
@@ -431,6 +432,11 @@ __INITFUNC__ void RangeFinder::detect_instance(uint8_t instance, uint8_t& serial
 #if AP_RANGEFINDER_USD1_SERIAL_ENABLED
     case Type::USD1_Serial:
         serial_create_fn = AP_RangeFinder_USD1_Serial::create;
+        break;
+#endif
+#if AP_RANGEFINDER_XLH100_SERIAL_ENABLED
+    case Type::XLH100_Serial:
+        serial_create_fn = AP_RangeFinder_XLH100_Serial::create;
         break;
 #endif
 #if AP_RANGEFINDER_BEBOP_ENABLED
