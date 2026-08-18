@@ -8,16 +8,18 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Param/AP_Param.h>
+#include <AP_Logger/AP_Logger_config.h> // defines HAL_LOGGING_ENABLED
 
 /*
   Driver for the Emm_V5.0 (Emm42_V5.0 / ZDT_X42) closed-loop stepper
   servo board, controlled over UART with the vendor's custom protocol.
 
   The driver is hooked into SRV_Channels (same pattern as AP_Volz_Protocol /
-  AP_RobotisServo): the normalised output (-1..1) of the servo channel
-  selected by SRV_STM_CHAN is converted into a target angle and streamed to
-  the board as relative position commands. update() is called from the main
-  thread by SRV_Channels::push(), so no extra thread is needed.
+  AP_RobotisServo): the PWM (1000..2000) of the servo channel selected by
+  SRV_STM_CHAN is converted into a target angle and streamed to the board as
+  absolute position commands. With no PWM output on the channel the motor
+  returns to the zero position. update() is called from the main thread by
+  SRV_Channels::push(), so no extra thread is needed.
 
   Setup on the flight controller:
     SERIALx_PROTOCOL = 49 (StepMotor)
@@ -68,6 +70,7 @@ public:
         S_VEL   = 9,      /* 读取电机实时转速 */
         S_CPOS  = 10,     /* 读取电机实时位置角度 */
         S_PERR  = 11,     /* 读取电机位置误差角度 */
+        S_TPOS_CUR = 12,  /* 读取电机实时设定的目标位置角度 (0x34) */
         S_FLAG  = 13,     /* 读取使能/到位/堵转状态标志位 */
         S_Conf  = 14,     /* 读取驱动参数 */
         S_State = 15,     /* 读取系统状态参数 */
@@ -80,7 +83,7 @@ private:
     // parameters
     AP_Int8  _output_chan;    // SRV_Channels channel to follow, 0=disabled
     AP_Int16 _dt_send;        // command send interval [ms]
-    AP_Float _scale;          // target angle = norm * SC * 360 [deg]
+    AP_Float _scale;          // target angle = pwm_norm * SC * 360 [deg]
     AP_Int16 _vel_rpm;        // speed for position commands [RPM]
     AP_Int8  _acc;            // acceleration gear 0-255 (0=no ramp)
     AP_Int8  _divide;         // microstep subdivision, 200*DIV pulses/rev for 1.8deg motor
@@ -95,16 +98,40 @@ private:
     float    _cur_deg;             // last reported position
     float    _des_deg;             // last commanded target
     float    _cmd_deg;             // position the motor has been commanded to
+    float    _abs_pulse;           // signed absolute target position in pulses
     bool     _cmd_deg_valid;       // _cmd_deg is synchronised with the motor
     bool     _feedback_valid;      // at least one position frame received
     uint32_t _last_feedback_ms;    // last position frame time
-    uint32_t _last_poll_ms;        // last position poll time
+    uint32_t _last_poll_ms;        // last system-state (0x43) poll time
     uint32_t _last_send_ms;        // last motion command time
     uint32_t _init_ms;             // init time
     bool     _stopped;             // e-stop sent, waiting for recovery
     uint8_t  _last_status;         // last command status byte
     uint32_t _last_err_msg_ms;     // rate limiting for GCS messages
     bool     _no_fb_reported;      // "no feedback" warning already sent
+
+    // telemetry decoded from the motor (for logging)
+    float    _cur_vel_rpm;         // real-time speed (RPM)
+    float    _pos_err_deg;         // position error (deg)
+    float    _tpos_deg;            // target position (deg)
+    float    _tpos_cur_deg;        // current target position (no 0x43 source, stays 0)
+    uint32_t _last_log_ms;         // last log write time
+
+    // 0x43 system-state fields (measured frame layout, 31 bytes total)
+    uint16_t _sys_version;         // raw 2-byte field preceding bus voltage
+    uint16_t _bus_mv;              // bus voltage [mV]
+    uint16_t _phase_ma;            // phase current [mA]
+    uint16_t _enc_cal;             // calibrated encoder value
+    uint8_t  _flags_ready;         // bit0 encoder, bit1 cal table, bit2 homing, bit3 home failed
+    uint8_t  _flags_motor;         // bit0 enabled, bit1 in position, bit2 stalled, bit3 stall protection
+
+    // diagnostics counters
+    uint16_t _frames_ok;           // frames received and checksum-verified
+    uint16_t _frames_bad;          // frames dropped (checksum fail / unknown fn code)
+    uint32_t _rx_bytes;            // raw bytes received on the UART (any byte)
+    uint32_t _tx_bytes;            // bytes written to the UART (commands sent)
+    uint16_t _tx_fail;             // write_cmd attempts dropped (txspace too small)
+    uint32_t _last_rx_ms;          // last time any byte was received
 
     // receive parser (non-blocking frame state machine)
     enum ParseState {
@@ -113,9 +140,10 @@ private:
         PARSE_WAIT_DATA,
     };
     ParseState _parse_state;
-    uint8_t    _rxbuf[12];
+    uint8_t    _rxbuf[32];         // longest frame: 0x43 system state (31 bytes)
     uint8_t    _rxlen;   // expected total frame length
     uint8_t    _rxidx;
+    uint32_t   _last_byte_ms;      // last byte time while mid-frame (inter-byte timeout)
 
     // Emm_V5 protocol commands
     void Emm_V5_Pos_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc,
@@ -133,6 +161,11 @@ private:
     uint8_t expected_frame_len(uint8_t fn) const;
     void    handle_frame(void);
     void    init(void);
+
+#if HAL_LOGGING_ENABLED
+    // write STPM log packet
+    void    Log_Write(void);
+#endif
 };
 
 namespace AP {

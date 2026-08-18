@@ -16,25 +16,36 @@
 #include <SRV_Channel/SRV_Channel.h>
 #include <RC_Channel/RC_Channel.h>
 #include <GCS_MAVLink/GCS.h>
+#include <AP_Logger/AP_Logger.h>
+#include <AP_StepMotor/LogStructure.h>
 
 extern const AP_HAL::HAL& hal;
 
-// serial settings, must match the board's P_Serial menu
-#define STEP_MOTOR_BAUD           115200
-#define STEP_MOTOR_BUFSIZE_RX     128
-#define STEP_MOTOR_BUFSIZE_TX     128
+// serial settings: the UART is opened by AP_SerialManager (same pattern
+// as AP_RobotisServo). The driver itself must not call begin() again.
+// Baudrate follows SERIALx_BAUD (e.g. 57 = 57600, 115 = 115200).
 
-// poll the motor position at this period
-#define STEP_MOTOR_POLL_MS        250
+// poll the board's full system state (0x43) at this period. A single
+// 0x43 frame carries position/speed/error plus voltage, current and
+// status flags, replacing the old 0x36 poll + 0x35/0x37/0x33/0x34
+// round-robin.
+#define STEP_MOTOR_POLL_MS        20
 // feedback older than this is considered stale
 #define STEP_MOTOR_FB_TIMEOUT_MS  3000
+// a partial frame whose next byte takes longer than this is considered
+// lost (dropped/garbled bytes): resynchronise the parser on the next
+// address byte instead of swallowing the following frame. Must exceed
+// the main loop period (a frame can be split across update() calls).
+#define STEP_MOTOR_INTERBYTE_MS   50
 // wait this long for position feedback before assuming position 0
 #define STEP_MOTOR_SYNC_TIMEOUT_MS 1000
+// telemetry log write period
+#define STEP_MOTOR_LOG_MS         STEP_MOTOR_POLL_MS
 
 const AP_Param::GroupInfo AP_StepMotor::var_info[] = {
     // @Param: CHAN
     // @DisplayName: Step motor control channel
-    // @Description: The SRV_Channels output channel whose normalised output (-1 to 1) drives the step motor target angle. The SERVOn_FUNCTION of that channel must be assigned to a servo function. Setting 0 disables the driver.
+    // @Description: The SRV_Channels output channel whose PWM (1000 to 2000) drives the step motor target angle. PWM 1500 is the zero angle, PWM 1000 or 2000 command -SC*360 or +SC*360 degrees. When the channel has no PWM output the motor returns to (or stays at) the zero position. The SERVOn_FUNCTION of that channel must be assigned to a servo function. Setting 0 disables the driver.
     // @Values: 0:Disabled,1:Chan1,2:Chan2,3:Chan3,4:Chan4,5:Chan5,6:Chan6,7:Chan7,8:Chan8,9:Chan9,10:Chan10,11:Chan11,12:Chan12,13:Chan13,14:Chan14,15:Chan15,16:Chan16
     // @User: Standard
     AP_GROUPINFO("CHAN",  1, AP_StepMotor, _output_chan, 0),
@@ -49,7 +60,7 @@ const AP_Param::GroupInfo AP_StepMotor::var_info[] = {
 
     // @Param: SC
     // @DisplayName: Angle scale
-    // @Description: Target angle scaling. Full deflection of the followed channel (output -1 or 1) commands SC*360 degrees. Set 0.5 for +/-180deg at full stick.
+    // @Description: Target angle scaling. Full deflection of the followed channel (PWM 1000 or 2000) commands SC*360 degrees. Set 0.5 for +/-180deg at full deflection.
     // @Units: deg
     // @Range: 0.01 50
     // @User: Standard
@@ -127,8 +138,8 @@ void AP_StepMotor::init(void)
         return;
     }
 
-    _uart->begin(STEP_MOTOR_BAUD, STEP_MOTOR_BUFSIZE_RX, STEP_MOTOR_BUFSIZE_TX);
-    _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
+    // the port is already begun by AP_SerialManager with the baudrate and
+    // buffers from SERIALx_BAUD, exactly like AP_RobotisServo does it
 
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "StepMotor: found UART, enabling motor");
     Emm_V5_Enable(_addr, true);
@@ -158,11 +169,19 @@ void AP_StepMotor::update(void)
     // always drain and parse incoming frames (acknowledgements and feedback)
     read_incoming();
 
-    // poll motor position for feedback
+    // poll the board's system state (position/speed/error/flags/voltage/current)
     if ((now - _last_poll_ms) >= STEP_MOTOR_POLL_MS) {
         _last_poll_ms = now;
-        Emm_V5_Read_Sys_Params(_addr, S_CPOS);
+        Emm_V5_Read_Sys_Params(_addr, S_State);
     }
+
+#if HAL_LOGGING_ENABLED
+    // write telemetry log at a fixed rate
+    if ((now - _last_log_ms) >= STEP_MOTOR_LOG_MS) {
+        _last_log_ms = now;
+        Log_Write();
+    }
+#endif
 
     if (_output_chan < 1 || _output_chan > NUM_SERVO_CHANNELS) {
         return; // driver disabled or invalid channel
@@ -189,15 +208,27 @@ void AP_StepMotor::update(void)
     }
     _last_send_ms = now;
 
-    // target angle from the followed servo channel, -SC*360..+SC*360 deg
-    const SRV_Channel::Aux_servo_function_t function = SRV_Channels::channel_function(_output_chan.get() - 1);
-    const float norm = SRV_Channels::get_output_norm(function);
-    _des_deg = norm * _scale * 360.0f;
+    // target angle from the PWM of the followed servo channel.
+    // PWM 1000..2000 maps linearly to -SC*360..+SC*360 deg, PWM 1500 = 0 deg.
+    const SRV_Channel *ch = SRV_Channels::srv_channel(_output_chan.get() - 1);
+    const uint16_t pwm = (ch != nullptr) ? ch->get_output_pwm() : 0;
+
+    if (pwm == 0) {
+        // no PWM output on the channel: hold/return to the zero position
+        _des_deg = 0.0f;
+    } else {
+        const float norm = constrain_float(((float)pwm - 1500.0f) / 500.0f, -1.0f, 1.0f);
+        _des_deg = norm * _scale * 360.0f;
+    }
+
+    // pulses per degree for a 1.8 degree motor: (360/1.8)*DIV/360
+    const float steps_per_deg = _divide.get() / 1.8f;
 
     if (!_cmd_deg_valid) {
         // synchronise the command baseline with the reported position
         if (_feedback_valid) {
             _cmd_deg = _cur_deg;
+            _abs_pulse = _cur_deg * steps_per_deg;
             _cmd_deg_valid = true;
         } else if ((now - _init_ms) > STEP_MOTOR_SYNC_TIMEOUT_MS) {
             // no feedback at all: assume the motor is at 0 so control is not blocked
@@ -206,28 +237,31 @@ void AP_StepMotor::update(void)
                 GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "StepMotor: no position feedback, assuming 0deg");
             }
             _cmd_deg = 0.0f;
+            _abs_pulse = 0.0f;
             _cmd_deg_valid = true;
         } else {
             return;
         }
     }
 
-    // relative move from the last commanded position
+    // only send when the target has moved by at least one pulse since the
+    // last command. Resending an identical absolute position at the DT rate
+    // floods the bus (50 identical frames/s at DT=20) and has been observed
+    // to make the board stop replying to read commands.
     const float delta_deg = _des_deg - _cmd_deg;
-
-    // pulses per degree for a 1.8 degree motor: (360/1.8)*DIV/360
-    const float steps_per_deg = _divide.get() / 1.8f;
-    const float pulses_f = fabsf(delta_deg) * steps_per_deg;
-    if (pulses_f < 1.0f) {
-        return; // within one pulse, nothing to send
+    if (fabsf(delta_deg) * steps_per_deg < 1.0f) {
+        return; // target unchanged: do not resend
     }
+    _abs_pulse += delta_deg * steps_per_deg;
 
-    const uint32_t clk = (uint32_t)(pulses_f + 0.5f);
-    const uint8_t dir = (delta_deg < 0.0f) ? 1 : 0;  // 0=CW, 1=CCW
+    const uint32_t clk_abs = (uint32_t)(fabsf(_abs_pulse) + 0.5f);
+
+    const uint8_t dir = (_abs_pulse < 0.0f) ? 1 : 0;  // 0=CW, 1=CCW
     const uint16_t vel = constrain_int16(_vel_rpm.get(), 0, 5000);
     const uint8_t acc = constrain_int16(_acc.get(), 0, 255);
 
-    Emm_V5_Pos_Control(_addr, dir, vel, acc, clk, false, false);
+    // absolute position command (raF = true)
+    Emm_V5_Pos_Control(_addr, dir, vel, acc, clk_abs, true, false);
     _cmd_deg = _des_deg;
 }
 
@@ -302,9 +336,11 @@ bool AP_StepMotor::checksum_ok(const uint8_t *frame, uint8_t len) const
 bool AP_StepMotor::write_cmd(const uint8_t *cmd, uint8_t len)
 {
     if (_uart == nullptr || _uart->txspace() < len) {
+        _tx_fail++;
         return false;
     }
     _uart->write(cmd, len);
+    _tx_bytes += len;
     return true;
 }
 
@@ -414,6 +450,7 @@ void AP_StepMotor::Emm_V5_Read_Sys_Params(uint8_t addr, SysParams_t s)
     case S_CPHA : cmd[i] = 0x27; ++i; break;
     case S_ENCL : cmd[i] = 0x31; ++i; break;
     case S_TPOS : cmd[i] = 0x33; ++i; break;
+    case S_TPOS_CUR : cmd[i] = 0x34; ++i; break;
     case S_VEL  : cmd[i] = 0x35; ++i; break;
     case S_CPOS : cmd[i] = 0x36; ++i; break;
     case S_PERR : cmd[i] = 0x37; ++i; break;
@@ -449,6 +486,8 @@ uint8_t AP_StepMotor::expected_frame_len(uint8_t fn) const
         return 8;
     case 0x35:  // current speed, signed 16 bit
         return 6;
+    case 0x43:  // system state (measured on Emm42_V5.0: 31 bytes)
+        return 31;
     default:
         return 0;
     }
@@ -461,9 +500,19 @@ uint8_t AP_StepMotor::expected_frame_len(uint8_t fn) const
  */
 void AP_StepMotor::read_incoming(void)
 {
+    // if we are mid-frame and no further byte arrives in time the frame
+    // is incomplete (bytes lost or garbled): resynchronise on the next
+    // address byte so the following frame is not swallowed
+    if (_parse_state != PARSE_WAIT_ADDR &&
+        (AP_HAL::millis() - _last_byte_ms) > STEP_MOTOR_INTERBYTE_MS) {
+        _frames_bad++;
+        _parse_state = PARSE_WAIT_ADDR;
+    }
     while (_uart->available() > 0) {
         const uint8_t b = _uart->read();
-
+        _rx_bytes++;
+        _last_rx_ms = AP_HAL::millis();
+        _last_byte_ms = _last_rx_ms;
         switch (_parse_state) {
         case PARSE_WAIT_ADDR:
             if (b == (uint8_t)_addr.get()) {
@@ -477,6 +526,7 @@ void AP_StepMotor::read_incoming(void)
             _rxlen = expected_frame_len(b);
             if (_rxlen == 0 || _rxlen > sizeof(_rxbuf)) {
                 _parse_state = PARSE_WAIT_ADDR; // unknown frame, resync
+                _frames_bad++;
             } else {
                 _rxidx = 2;
                 _parse_state = PARSE_WAIT_DATA;
@@ -488,12 +538,24 @@ void AP_StepMotor::read_incoming(void)
             if (_rxidx >= _rxlen) {
                 if (checksum_ok(_rxbuf, _rxlen)) {
                     handle_frame();
+                    _frames_ok++;
+                } else {
+                    _frames_bad++;
                 }
                 _parse_state = PARSE_WAIT_ADDR;
             }
             break;
         }
     }
+}
+
+// decode a sign-byte + uint32 angle field (value * 360/65536 deg)
+static float emm_angle(const uint8_t *p)
+{
+    const uint32_t v = ((uint32_t)p[1] << 24) | ((uint32_t)p[2] << 16) |
+                       ((uint32_t)p[3] << 8)  | ((uint32_t)p[4] << 0);
+    const float deg = (float)v * 360.0f / 65536.0f;
+    return p[0] ? -deg : deg;
 }
 
 /*
@@ -538,6 +600,63 @@ void AP_StepMotor::handle_frame(void)
         break;
     }
 
+    case 0x43: { // system state (31 bytes, layout measured on Emm42_V5.0)
+        // [2]  u16 raw field preceding bus voltage (likely fw version)
+        // [4]  u16 bus voltage [mV]
+        // [6]  u16 phase current [mA]
+        // [8]  u16 calibrated encoder value
+        // [10] sign + u32 target position
+        // [15] sign + u16 real-time velocity [RPM]
+        // [18] sign + u32 real-time position
+        // [23] sign + u32 position error
+        // [28] ready flags: bit0 encoder, bit1 cal table, bit2 homing, bit3 home failed
+        // [29] motor flags: bit0 enabled, bit1 in position, bit2 stalled, bit3 stall protection
+        _sys_version = ((uint16_t)_rxbuf[2] << 8) | _rxbuf[3];
+        _bus_mv      = ((uint16_t)_rxbuf[4] << 8) | _rxbuf[5];
+        _phase_ma    = ((uint16_t)_rxbuf[6] << 8) | _rxbuf[7];
+        _enc_cal     = ((uint16_t)_rxbuf[8] << 8) | _rxbuf[9];
+        _tpos_deg    = emm_angle(&_rxbuf[10]);
+        {
+            const uint16_t vel = ((uint16_t)_rxbuf[16] << 8) | _rxbuf[17];
+            _cur_vel_rpm = _rxbuf[15] ? -(float)vel : (float)vel;
+        }
+        _cur_deg     = emm_angle(&_rxbuf[18]);
+        _pos_err_deg = emm_angle(&_rxbuf[23]);
+        _flags_ready = _rxbuf[28];
+        _flags_motor = _rxbuf[29];
+        _feedback_valid = true;
+        _last_feedback_ms = AP_HAL::millis();
+        if (!_cmd_deg_valid) {
+            _cmd_deg = _cur_deg;
+            _cmd_deg_valid = true;
+        }
+        break;
+    }
+
+    case 0x35: { // motor real-time speed, signed 16 bit [RPM]
+        const uint16_t vel = ((uint16_t)_rxbuf[3] << 8) | _rxbuf[4];
+        _cur_vel_rpm = _rxbuf[2] ? -(float)vel : (float)vel;
+        break;
+    }
+
+    case 0x33: // motor target position, signed 32 bit
+    case 0x34: // current target position being executed, signed 32 bit
+    case 0x37: { // position error, signed 32 bit
+        const uint32_t raw = ((uint32_t)_rxbuf[3] << 24) |
+                             ((uint32_t)_rxbuf[4] << 16) |
+                             ((uint32_t)_rxbuf[5] << 8)  |
+                             ((uint32_t)_rxbuf[6] << 0);
+        const float deg = (float)raw * 360.0f / 65536.0f;
+        if (fn == 0x33) {
+            _tpos_deg = _rxbuf[2] ? -deg : deg;
+        } else if (fn == 0x34) {
+            _tpos_cur_deg = _rxbuf[2] ? -deg : deg;
+        } else {
+            _pos_err_deg = _rxbuf[2] ? -deg : deg;
+        }
+        break;
+    }
+
     default:
         break;
     }
@@ -548,6 +667,28 @@ bool AP_StepMotor::healthy(void) const
     return _initialised && _feedback_valid &&
            ((AP_HAL::millis() - _last_feedback_ms) < STEP_MOTOR_FB_TIMEOUT_MS);
 }
+
+#if HAL_LOGGING_ENABLED
+/*
+  write a STPM telemetry packet with the last decoded feedback values
+ */
+void AP_StepMotor::Log_Write(void)
+{
+    if (!_feedback_valid) {
+        return;
+    }
+    const struct log_StepMotor pkt{
+        LOG_PACKET_HEADER_INIT(LOG_STEPMOTOR_MSG),
+        time_us: AP_HAL::micros64(),
+        cpos: _cur_deg,
+        tpos: _tpos_deg,
+        cur_tpos: _tpos_cur_deg,
+        vel: _cur_vel_rpm,
+        perr: _pos_err_deg
+    };
+    AP::logger().WriteBlock(&pkt, sizeof(pkt));
+}
+#endif
 
 AP_StepMotor *AP_StepMotor::get_singleton()
 {

@@ -533,8 +533,7 @@ void AP_SerialManager::init()
                     break;
 
                 case SerialProtocol_StepMotor:
-                    // Emm_V5 closed-loop stepper, baudrate is hardcoded to 115200
-                    state[i].baud.set_and_default(AP_SERIALMANAGER_STEPMOTOR_BAUD/1000);   // update baud param in case user looks at it
+                    // Emm_V5 closed-loop stepper, baudrate follows SERIALx_BAUD
                     uart->begin(state[i].baudrate(),
                                          AP_SERIALMANAGER_STEPMOTOR_BUFSIZE_RX,
                                          AP_SERIALMANAGER_STEPMOTOR_BUFSIZE_TX);
