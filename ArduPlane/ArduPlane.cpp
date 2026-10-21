@@ -80,7 +80,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
 #if AP_SERVORELAYEVENTS_ENABLED
     SCHED_TASK_CLASS(AP_ServoRelayEvents, &plane.ServoRelayEvents, update_events, 50, 150,  63),
 #endif
-    SCHED_TASK_CLASS(AP_BattMonitor, &plane.battery, read,   10, 300,  66),
+    SCHED_TASK_CLASS(AP_BattMonitor, &plane.battery, read,   400, 300,  66),
     SCHED_TASK_CLASS(AP_Baro, &plane.barometer, accumulate,  50, 150,  69),
     SCHED_TASK(read_rangefinder,       50,    100, 78),
 #if AP_ICENGINE_ENABLED
