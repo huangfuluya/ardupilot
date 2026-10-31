@@ -411,7 +411,13 @@ void Plane::do_nav_wp(const AP_Mission::Mission_Command& cmd)
 
 void Plane::do_land(const AP_Mission::Mission_Command& cmd)
 {
-    set_next_WP(cmd.content.location);
+    Location loc = cmd.content.location;
+    if (loc.lat == 0 && loc.lng == 0 && home.lat != 0 && home.lng != 0) {
+        // no landing location was given, use the home position instead of the current position
+        loc.lat = home.lat;
+        loc.lng = home.lng;
+    }
+    set_next_WP(loc);
 
     // configure abort altitude and pitch
     // if NAV_LAND has an abort altitude then use it, else use last takeoff, else use 50m
@@ -525,6 +531,11 @@ void Plane::do_loiter_to_alt(const AP_Mission::Mission_Command& cmd)
 {
     //set target alt  
     Location loc = cmd.content.location;
+    if (loc.lat == 0 && loc.lng == 0 && home.lat != 0 && home.lng != 0) {
+        // no location was given, use the home position instead of the current position
+        loc.lat = home.lat;
+        loc.lng = home.lng;
+    }
     loc.sanitize(current_loc);
     set_next_WP(loc);
     loiter_set_direction_wp(cmd);
