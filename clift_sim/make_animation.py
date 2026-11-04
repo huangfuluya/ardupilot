@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Render the cooperative-lift SITL run as an MP4 animation.
 
 The aircraft trajectories come from sim_log.csv (SITL).  SITL has no tether
@@ -145,6 +145,16 @@ def main():
     t = d["t"]
     lead_ned = np.column_stack([d["l_n"], d["l_e"], d["l_d"]])
     foll_ned = np.column_stack([d["f_n"], d["f_e"], d["f_d"]])
+
+    # skip the take-off: start once both aircraft are up at cruise altitude
+    airborne = (lead_ned[:, 2] < -16.0) & (foll_ned[:, 2] < -16.0)
+    i0 = 0
+    if airborne.any():
+        i0 = max(0, int(np.argmax(airborne)) - 10)
+    t = t[i0:]
+    lead_ned = lead_ned[i0:]
+    foll_ned = foll_ned[i0:]
+
     payload_ned = simulate_payload(lead_ned, foll_ned, t)
     to_enu = np.array([[0, 1, 0], [1, 0, 0], [0, 0, -1]], dtype=float)
     lead = lead_ned @ to_enu.T
