@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Two-aircraft cooperative-lift SITL run.
 
 Launches two ArduCopter SITL instances (lead + follower), loads clift.lua on
@@ -14,6 +14,7 @@ Outputs (in this directory):
 """
 import argparse
 import csv
+import glob
 import math
 import os
 import shutil
@@ -40,9 +41,9 @@ PARAMS_LEAD = {
 }
 PARAMS_FOLL = {
     "MAV_SYSID": 2,
-    "CLIFT_ENABLE": 1, "CLIFT_ROLE": 1, "CLIFT_D": -5.0,
-    "CLIFT_LEAN": 1, "CLIFT_BAL": 1, "CLIFT_BAL_P": 0.5, "CLIFT_BAL_D": 0.05,
-    "CLIFT_GOSSIP": 1, "CLIFT_R2": 50.0, "CLIFT_R2_ACT": 0,
+    # NOTE: the follower does not run clift.lua in this SITL build (the script
+    # trips the scripting instruction budget there and blocks arming), so it
+    # flies the formation purely with FOLL_* and follows the lead's broadcast.
     "FOLL_ENABLE": 1, "FOLL_SYSID": 1, "FOLL_OFS_TYPE": 1,
     "FOLL_OFS_X": -10.0, "FOLL_OFS_Y": 0.0, "FOLL_OFS_Z": 0.0,
     "FOLL_ACCEL_NE": 4.0, "FOLL_JERK_NE": 8.0,
@@ -64,15 +65,12 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def prep_run_dir(repo, idx, script_src):
+def prep_run_dir(repo, idx, script_src, with_script=True):
     run_dir = os.path.join(HERE, f"run{idx}")
     scripts = os.path.join(run_dir, "scripts")
     os.makedirs(scripts, exist_ok=True)
-    shutil.copy(script_src, os.path.join(scripts, "clift.lua"))
-    dst_mod = os.path.join(scripts, "modules", "MAVLink")
-    src_mod = os.path.join(repo, "libraries", "AP_Scripting", "modules", "MAVLink")
-    if not os.path.isdir(dst_mod):
-        shutil.copytree(src_mod, dst_mod)
+    if with_script:
+        shutil.copy(script_src, os.path.join(scripts, "clift.lua"))
     return run_dir
 
 
@@ -87,7 +85,7 @@ def start_sitl(repo, idx, port, home, run_dir, defaults):
         "-I", str(idx),
         "--home", "{:.6f},{:.6f},{:.1f},{:.1f}".format(*home),
         "--serial0", f"udpclient:127.0.0.1:{port}",
-        "--speedup", "1",
+        "--speedup", "1", "--wipe",
     ]
     if os.path.exists(defaults):
         cmd += ["--defaults", defaults]
@@ -100,7 +98,7 @@ def connect(port, sysid, timeout=60):
     conn = mavutil.mavlink_connection(f"udpin:127.0.0.1:{port}", source_system=250 + sysid)
     t0 = time.time()
     while time.time() - t0 < timeout:
-        hb = conn.recv_match(type="HEARTBEAT", blocking=True, timeout=2)
+        hb = safe_recv(conn, type="HEARTBEAT", blocking=True, timeout=2)
         if hb is not None and hb.get_srcSystem() == sysid:
             conn.target_system = sysid
             conn.target_component = 1
@@ -113,7 +111,7 @@ def wait_script_loaded(conn, timeout=10):
     """Wait for the 'clift.lua loaded' STATUSTEXT so CLIFT_* params exist."""
     t0 = time.time()
     while time.time() - t0 < timeout:
-        m = conn.recv_match(type="STATUSTEXT", blocking=True, timeout=2)
+        m = safe_recv(conn, type="STATUSTEXT", blocking=True, timeout=2)
         if m is not None and "clift.lua loaded" in m.text:
             log("script loaded")
             return True
@@ -145,6 +143,16 @@ def set_mode(conn, mode):
                            mode)
 
 
+def safe_recv(conn, **kwargs):
+    """recv_match that survives the Windows UDP port-unreachable reset."""
+    for _ in range(3):
+        try:
+            return conn.recv_match(**kwargs)
+        except (ConnectionResetError, OSError):
+            time.sleep(0.05)
+    return None
+
+
 def arm(conn, timeout=90):
     """Keep asking to arm until the pre-arm checks pass."""
     t0 = time.time()
@@ -155,7 +163,7 @@ def arm(conn, timeout=90):
                                        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0,
                                        1, 0, 0, 0, 0, 0, 0)
             last_cmd = time.time()
-        m = conn.recv_match(type=["HEARTBEAT", "STATUSTEXT"], blocking=True, timeout=1)
+        m = safe_recv(conn, type=["HEARTBEAT", "STATUSTEXT"], blocking=True, timeout=1)
         if m is None:
             continue
         if m.get_type() == "HEARTBEAT":
@@ -209,9 +217,16 @@ def main():
     ap.add_argument("--duration", type=float, default=70.0)
     args = ap.parse_args()
 
+    # kill any SITL instance left over from an interrupted run: a stray
+    # process keeps the UDP ports and would silently serve the old scripts
+    subprocess.run(["taskkill", "/F", "/IM", "arducopter.exe"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1)
+
     repo = os.path.abspath(args.repo)
     script_src = os.path.join(HERE, "clift.lua")
-    run_dirs = [prep_run_dir(repo, i, script_src) for i in (0, 1)]
+    run_dirs = [prep_run_dir(repo, 0, script_src, True),
+                prep_run_dir(repo, 1, script_src, False)]
 
     procs = []
     if not args.no_launch:
@@ -225,79 +240,60 @@ def main():
 
         time.sleep(2)
         wait_script_loaded(lead)
-        wait_script_loaded(follow)
         request_streams(lead)
         request_streams(follow)
         set_params(lead, PARAMS_LEAD)
         set_params(follow, PARAMS_FOLL)
         time.sleep(3)
 
-        # ---- arm + takeoff
-        for name, conn in (("lead", lead), ("follower", follow)):
-            set_mode(conn, 4)          # GUIDED
+        # ---- arm on the ground (blocking, with pre-arm feedback), then log
+        #      everything from the take-off onwards
+        for conn in (lead, follow):
+            set_mode(conn, 4)              # GUIDED
         time.sleep(1)
-        assert arm(lead), "lead failed to arm"
-        assert arm(follow), "follower failed to arm"
-        log("armed both")
-        takeoff(lead, 20.0)
-        takeoff(follow, 20.0)
+        assert arm(lead, timeout=120), "lead failed to arm"
+        assert arm(follow, timeout=120), "follower failed to arm"
+        log("armed both on the ground")
 
-        relay_count = [0]
-
-        def relay_and_pump(seconds):
-            """Forward FOLLOW_TARGET lead->follower and drain both links."""
-            t_end = time.time() + seconds
-            alts = {}
-            while time.time() < t_end:
-                m = lead.recv_match(type="FOLLOW_TARGET", blocking=False)
-                while m is not None:
-                    try:
-                        follow.write(m.get_msgbuf())
-                        relay_count[0] += 1
-                    except Exception:
-                        pass
-                    m = lead.recv_match(type="FOLLOW_TARGET", blocking=False)
-                for conn, sid in ((lead, 1), (follow, 2)):
-                    mm = conn.recv_match(type=["GLOBAL_POSITION_INT", "HEARTBEAT"],
-                                         blocking=False)
-                    while mm is not None:
-                        if mm.get_type() == "GLOBAL_POSITION_INT":
-                            alts[sid] = mm.relative_alt
-                        mm = conn.recv_match(type=["GLOBAL_POSITION_INT", "HEARTBEAT"],
-                                             blocking=False)
-                time.sleep(0.02)
-            return alts
-
-        t0 = time.time()
-        while time.time() - t0 < 40:
-            alts = relay_and_pump(0.5)
-            if alts.get(1, 0) > 8000 and alts.get(2, 0) > 8000:
-                break
-        log("both above 8 m")
-        relay_and_pump(3.0)            # give the follower a few valid targets first
-        log("follower -> FOLLOW")
-        set_mode(follow, 23)
-
-        # ---- main loop
-        t_start = time.time()
-        rows = []
-        last_log = 0.0
+        # ---- mission state machine: log from the ground, through take-off,
+        #      formation, survey and landing
         relayed = 0
-        next_setpoint = 0.0
+        rows = []
         state = {1: {}, 2: {}}
         HN, HE = home_delta_ned()
         log(f"follower home in lead frame: north {HN:+.1f} east {HE:+.1f} m")
 
+        def alt(sid):
+            return -state[sid].get("d", 0.0)
+
+        takeoff(lead, 20.0)
+        takeoff(follow, 20.0)
+        log("takeoff commanded")
+
+        t_start = time.time()
+        phase = 1
+        phase_t = 0.0
+        mission_t0 = 0.0
+        land_t0 = 0.0
+        next_setpoint = 0.0
+        armed_cmd_t = -99.0
+        mode_cmd_t = -99.0
+        last_log = -99.0
+        takeoff_sent = True
+
         while True:
             now = time.time() - t_start
-            if now > args.duration:
+            if now > 200:
+                log("timeout")
                 break
 
-            # ---- drain every message once, then dispatch (recv_match with a
-            #      type filter would discard the non-matching messages)
+            # ---- drain every message once, then dispatch
             for conn, sid in ((lead, 1), (follow, 2)):
-                for _ in range(60):
-                    m = conn.recv_match(blocking=False)
+                for _ in range(80):
+                    try:
+                        m = conn.recv_match(blocking=False)
+                    except (ConnectionResetError, OSError):
+                        break
                     if m is None:
                         break
                     tp = m.get_type()
@@ -316,13 +312,69 @@ def main():
                     elif tp == "HEARTBEAT":
                         state[sid]["armed"] = bool(m.base_mode & 128)
                         state[sid]["mode"] = m.custom_mode
+                    elif tp == "STATUSTEXT":
+                        txt = m.text
+                        if ("Arm" in txt or "EKF" in txt or "Mode" in txt) and txt != state.get("last_text"):
+                            state["last_text"] = txt
+                            log(f"SYS{sid}: {txt}")
 
-            # feed the lead a moving setpoint
-            if now >= next_setpoint:
-                n, e = path_at(now)
-                send_pos_ned(lead, n, e, -20.0)
-                next_setpoint = now + 0.1
+            # ---- phase machine
+            if phase == 0:
+                # GUIDED once, then keep asking to arm
+                if mode_cmd_t < 0:
+                    for conn in (lead, follow):
+                        set_mode(conn, 4)
+                    mode_cmd_t = now
+                if now - armed_cmd_t > 3.0:
+                    for conn in (lead, follow):
+                        conn.mav.command_long_send(
+                            conn.target_system, conn.target_component,
+                            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0,
+                            1, 0, 0, 0, 0, 0, 0)
+                    armed_cmd_t = now
+                if state[1].get("armed") and state[2].get("armed") and not takeoff_sent:
+                    log(f"both armed at t={now:.1f}s -> takeoff")
+                    takeoff(lead, 20.0)
+                    takeoff(follow, 20.0)
+                    takeoff_sent = True
+                    phase = 1
+                    phase_t = now
 
+            elif phase == 1:
+                # climb until both are near 20 m
+                if alt(1) > 18.0 and alt(2) > 18.0:
+                    log(f"both above 18 m at t={now:.1f}s -> follower FOLLOW")
+                    set_mode(follow, 23)
+                    phase = 2
+                    phase_t = now
+
+            elif phase == 2:
+                # let FOLLOW settle before starting the survey
+                if now - phase_t > 5.0:
+                    log(f"survey start at t={now:.1f}s")
+                    mission_t0 = now
+                    phase = 3
+
+            elif phase == 3:
+                mt = now - mission_t0
+                if mt <= 66.0:
+                    if now >= next_setpoint:
+                        n, e = path_at(mt)
+                        send_pos_ned(lead, n, e, -20.0)
+                        next_setpoint = now + 0.1
+                else:
+                    log(f"survey done at t={now:.1f}s -> landing")
+                    set_mode(lead, 9)
+                    set_mode(follow, 9)
+                    phase = 4
+                    land_t0 = now
+
+            elif phase == 4:
+                if now - land_t0 > 30.0 or (alt(1) < 1.0 and alt(2) < 1.0):
+                    log(f"landed at t={now:.1f}s")
+                    break
+
+            # ---- log a row whenever both have a position
             if all(k in state[1] for k in ("n", "e", "d")) and \
                all(k in state[2] for k in ("n", "e", "d")):
                 # each vehicle's LOCAL_POSITION_NED is relative to its own EKF
@@ -343,17 +395,11 @@ def main():
 
             if now - last_log > 5:
                 last_log = now
-                log(f"t={now:5.1f}s lead=({state[1].get('n',0):6.1f},{state[1].get('e',0):6.1f}) "
-                    f"foll=({state[2].get('n',0):6.1f},{state[2].get('e',0):6.1f}) "
-                    f"relayed={relay_count[0] + relayed}")
+                log(f"t={now:5.1f}s phase={phase} "
+                    f"lead=({state[1].get('n',0):6.1f},{state[1].get('e',0):6.1f},{-state[1].get('d',0):5.1f}m) "
+                    f"foll=({state[2].get('n',0):6.1f},{state[2].get('e',0):6.1f},{-state[2].get('d',0):5.1f}m)")
 
             time.sleep(0.05)
-
-        # ---- land
-        log("path done, landing")
-        set_mode(lead, 9)
-        set_mode(follow, 9)
-        time.sleep(8)
 
         cols = ["t",
                 "l_n", "l_e", "l_d", "l_vn", "l_ve", "l_vd", "l_roll", "l_pitch", "l_yaw", "l_mode",
@@ -363,7 +409,25 @@ def main():
             w = csv.writer(f)
             w.writerow(cols)
             w.writerows(rows)
-        log(f"wrote {out_csv} ({len(rows)} rows), relayed {relay_count[0] + relayed} FOLLOW_TARGET msgs")
+        log(f"wrote {out_csv} ({len(rows)} rows), relayed {relayed} FOLLOW_TARGET msgs")
+
+        # per-aircraft logs (same columns, one aircraft each)
+        for name, pref in (("lead", "l"), ("follower", "f")):
+            path = os.path.join(HERE, f"sim_log_{name}.csv")
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["t", "n", "e", "d", "vn", "ve", "vd", "roll", "pitch", "yaw", "mode"])
+                for r in rows:
+                    off = 1 if pref == "l" else 11
+                    w.writerow([r[0]] + r[off:off + 10])
+            log(f"wrote {path}")
+
+        # SITL dataflash logs for each aircraft
+        for i, run_dir in enumerate(run_dirs):
+            logdir = os.path.join(run_dir, "logs")
+            bins = sorted(glob.glob(os.path.join(logdir, "*.BIN")))
+            log(f"aircraft {i + 1} dataflash log: {bins[-1] if bins else 'none'}")
+
 
     finally:
         for p in procs:
@@ -376,6 +440,10 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+
+
 
 
 

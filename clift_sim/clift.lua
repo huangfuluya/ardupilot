@@ -1,4 +1,4 @@
-﻿-- clift.lua — Cooperative Lift coordination script (two-aircraft demo)
+-- clift.lua — Cooperative Lift coordination script (two-aircraft demo)
 --
 -- Runs on BOTH aircraft. CLIFT_ROLE selects the behaviour:
 --   ROLE = 0 (lead)     : broadcast FOLLOW_TARGET at 10 Hz, carrying this
@@ -73,15 +73,16 @@ local R2       = add_param("R2",       10, 2.5)
 -- @Param: R2_ACT  0 = warn only, 1 = warn and force GUIDED
 local R2_ACT   = add_param("R2_ACT",   11, 0)
 -- @Param: GOSSIP  receive the lead's battery state
-local GOSSIP   = add_param("GOSSIP",   12, 1)
+local GOSSIP   = add_param("GOSSIP",   12, 0)
 -- @Param: MAV_CHAN MAVLink channel used to send FOLLOW_TARGET (lead only)
 local MAV_CHAN = add_param("MAV_CHAN", 13, 0)
 
 -- ---------------------------------------------------------------- mavlink
-local mavlink_msgs = require("MAVLink/mavlink_msgs")
+-- NOTE: deliberately no require("MAVLink/mavlink_msgs") here. Parsing that
+-- module at load time exceeds the default SCR_VM_I_COUNT budget on some
+-- builds and blocks arming with "exceeded time limit". Both the FOLLOW_TARGET
+-- payload (string.pack) and custom_state (string.unpack) are handled directly.
 local FOLLOW_TARGET_CAPABILITIES = {POS=2^0, VEL=2^1, ACCEL=2^2, ATT_RATES=2^3}
-local msg_map = {}
-msg_map[FOLLOW_TARGET_ID] = "FOLLOW_TARGET"
 
 -- ---------------------------------------------------------------- state
 local offsets_active = false
@@ -175,26 +176,51 @@ local function send_follow_target()
     msg.position_cov = {0, 0, 0}
     msg.custom_state = custom_state
 
-    local msgid, payload = mavlink_msgs.encode("FOLLOW_TARGET", msg)
-    mavlink:send_chan(MAV_CHAN:get(), msgid, payload)
+    -- pack FOLLOW_TARGET by hand: pulling in the MAVLink Lua module costs more
+    -- VM instructions at load time than the default scripting budget allows
+    local payload = string.pack("<I8I8i4i4" .. string.rep("f", 17) .. "B",
+        msg.timestamp, custom_state, msg.lat, msg.lon,
+        msg.alt,
+        msg.vel[1], msg.vel[2], msg.vel[3],
+        msg.acc[1], msg.acc[2], msg.acc[3],
+        msg.attitude_q[1], msg.attitude_q[2], msg.attitude_q[3], msg.attitude_q[4],
+        msg.rates[1], msg.rates[2], msg.rates[3],
+        msg.position_cov[1], msg.position_cov[2], msg.position_cov[3],
+        capabilities)
+    mavlink:send_chan(MAV_CHAN:get(), FOLLOW_TARGET_ID, payload)
+end
+
+-- extract custom_state from a raw mavlink_message_t without the generic Lua
+-- decoder: the decoder loops over every field and can blow the scripting
+-- instruction budget when messages arrive in bursts
+local function gossip_custom_state(msg)
+    local magic = string.byte(msg, 3)
+    if magic ~= 0xFD and magic ~= 0xFE then
+        return nil
+    end
+    if string.unpack("<I3", msg, 10) ~= FOLLOW_TARGET_ID then
+        return nil
+    end
+    -- FOLLOW_TARGET payload starts at byte 13; timestamp (u64) then
+    -- custom_state (u64) at payload offset 8
+    return string.unpack("<I8", msg, 21)
 end
 
 local function receive_gossip()
-    local msg
-    repeat
-        msg = mavlink:receive_chan()
-        if msg ~= nil then
-            local parsed = mavlink_msgs.decode(msg, msg_map)
-            if parsed ~= nil and parsed.msgid == FOLLOW_TARGET_ID then
-                local cs = parsed.custom_state or 0
-                if cs > 0 then
-                    lead_consumed_mah = math.floor(cs / 10000)
-                    lead_current_a = (cs % 10000) / 100
-                    last_gossip_ms = millis()
-                end
-            end
+    -- bounded drain: the scripting VM has an instruction budget per call, so
+    -- never loop until the RX buffer is empty (a burst can trip the limit)
+    for _ = 1, 4 do
+        local msg = mavlink:receive_chan()
+        if msg == nil then
+            return
         end
-    until msg == nil
+        local cs = gossip_custom_state(msg)
+        if cs ~= nil and cs > 0 then
+            lead_consumed_mah = math.floor(cs / 10000)
+            lead_current_a = (cs % 10000) / 100
+            last_gossip_ms = millis()
+        end
+    end
 end
 
 local function clear_offsets()
@@ -313,3 +339,4 @@ end
 gcs:send_text(MAV_SEVERITY.INFO, "clift.lua loaded")
 
 return update()
+

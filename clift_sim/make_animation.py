@@ -39,9 +39,12 @@ LOAD_C = "#3ddc97"
 
 # ------------------------------------------------------------------ payload
 def simulate_payload(lead_ned, foll_ned, t):
-    """Verlet pendulum (point mass, rigid rod) under the midpoint anchor."""
-    # the rod attaches at the midpoint of the two aircraft; the payload hangs
-    # below it, so the constraint sphere is centred on the midpoint
+    """Payload on a 10 m line under the formation midpoint.
+
+    It starts resting on the ground; the line stays slack until the aircraft
+    have climbed more than ROD_L above it, then the payload is lifted off and
+    starts to swing like a pendulum.
+    """
     a = 0.5 * (lead_ned + foll_ned)
 
     dt = 0.01
@@ -50,7 +53,7 @@ def simulate_payload(lead_ned, foll_ned, t):
     ayy = np.interp(tt, t, a[:, 1])
     azz = np.interp(tt, t, a[:, 2])
 
-    pos = np.array([axx[0], ayy[0], azz[0] + ROD_L])
+    pos = np.array([axx[0], ayy[0], 0.0])      # resting on the ground (NED z=0)
     vel = np.zeros(3)
     prev = pos.copy()
     out = np.zeros((len(tt), 3))
@@ -59,14 +62,23 @@ def simulate_payload(lead_ned, foll_ned, t):
     for i in range(len(tt)):
         anchor = np.array([axx[i], ayy[i], azz[i]])
         vel = vel + grav * dt
-        vel *= 0.998
+        vel *= 0.999
         pos = pos + vel * dt
+
+        # taut line: payload cannot be further than ROD_L from the anchor
         r = pos - anchor
         d = np.linalg.norm(r)
-        if d < 1e-6:
-            r = np.array([0.0, 0.0, ROD_L])
-            d = ROD_L
-        pos = anchor + r * (ROD_L / d)
+        if d > ROD_L and d > 1e-6:
+            pos = anchor + r * (ROD_L / d)
+
+        # ground contact
+        if pos[2] > 0.0:
+            pos[2] = 0.0
+            if vel[2] > 0.0:
+                vel[2] = 0.0
+            vel[0] *= 0.85
+            vel[1] *= 0.85
+
         vel = (pos - prev) / dt
         prev = pos.copy()
         out[i] = pos
@@ -146,15 +158,6 @@ def main():
     lead_ned = np.column_stack([d["l_n"], d["l_e"], d["l_d"]])
     foll_ned = np.column_stack([d["f_n"], d["f_e"], d["f_d"]])
 
-    # skip the take-off: start once both aircraft are up at cruise altitude
-    airborne = (lead_ned[:, 2] < -16.0) & (foll_ned[:, 2] < -16.0)
-    i0 = 0
-    if airborne.any():
-        i0 = max(0, int(np.argmax(airborne)) - 10)
-    t = t[i0:]
-    lead_ned = lead_ned[i0:]
-    foll_ned = foll_ned[i0:]
-
     payload_ned = simulate_payload(lead_ned, foll_ned, t)
     to_enu = np.array([[0, 1, 0], [1, 0, 0], [0, 0, -1]], dtype=float)
     lead = lead_ned @ to_enu.T
@@ -177,12 +180,7 @@ def main():
     cam0 = Camera(-62, 20)
     # fixed zoom that fits the widest subject extent over the whole run
     max_dx = max_dy = 0.0
-    for i in frames:
-        p = cam0.project(np.vstack([lead[i], foll[i], payload[i]]))
-        max_dx = max(max_dx, p[:, 0].max() - p[:, 0].min())
-        max_dy = max(max_dy, p[:, 1].max() - p[:, 1].min())
-    half_w = max(max_dx / 2.0, max_dy * 16.0 / 9.0 / 2.0) * 1.6
-    half_h = half_w * 9.0 / 16.0
+    zoom = [16.0]          # smoothed half-width, metres
 
     text_time = fig.text(0.025, 0.945, "", color=FG, fontsize=15, weight="bold")
     text_stat = fig.text(0.025, 0.895, "", color=MUTED, fontsize=10.5)
@@ -223,10 +221,18 @@ def main():
         # camera follows the formation midpoint
         cxw = 0.5 * (lead[i, 0] + foll[i, 0])
         cyw = 0.5 * (lead[i, 1] + foll[i, 1])
-        # centre on the projected bounding box of the whole subject, fixed zoom
+        # centre on the projected bounding box of the whole subject and keep
+        # it filling the frame with a smoothed zoom (so take-off is visible too)
         pts = cam.project(np.vstack([lead[i], foll[i], payload[i]]))
         pcx = 0.5 * (pts[:, 0].min() + pts[:, 0].max())
         pcy = 0.5 * (pts[:, 1].min() + pts[:, 1].max()) + 0.5
+        span_x = pts[:, 0].max() - pts[:, 0].min()
+        span_y = pts[:, 1].max() - pts[:, 1].min()
+        target = max(span_x / 2.0, span_y * 16.0 / 9.0 / 2.0) * 1.55
+        target = max(10.0, min(30.0, target))
+        zoom[0] += 0.06 * (target - zoom[0])
+        half_w = zoom[0]
+        half_h = half_w * 9.0 / 16.0
         ax.set_xlim(pcx - half_w, pcx + half_w)
         ax.set_ylim(pcy - half_h, pcy + half_h)
 
