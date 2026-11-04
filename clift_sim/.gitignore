@@ -1,0 +1,8 @@
+run0/
+run1/
+smoke/
+*.log
+*.mp4
+fr*.png
+__pycache__/
+sim_log.csv
