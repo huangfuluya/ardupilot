@@ -37,6 +37,8 @@ PARAMS_LEAD = {
     "MAV_SYSID": 1,
     "CLIFT_ENABLE": 1, "CLIFT_ROLE": 0, "CLIFT_D": 5.0,
     "CLIFT_LEAN": 1, "CLIFT_BAL": 0, "CLIFT_MAV_CHAN": 0,
+    # the anchor damps its own vertical bobbing (no peer data on the lead)
+    "CLIFT_DAMP_D": 0.4, "CLIFT_DAMP_P": 0.0, "CLIFT_DAMP_MAX": 0.8,
     "WP_ACCEL": 2.0, "WP_JERK": 2.0,
     "PSC_NE_JERK": 4.0, "PSC_D_JERK": 2.0,
 }
@@ -47,6 +49,7 @@ PARAMS_FOLL = {
     "CLIFT_ENABLE": 1, "CLIFT_ROLE": 1, "CLIFT_D": -5.0,
     "CLIFT_LEAN": 1, "CLIFT_BAL": 1, "CLIFT_BAL_P": 0.5, "CLIFT_BAL_D": 0.05,
     "CLIFT_GOSSIP": 1, "CLIFT_R2": 50.0, "CLIFT_R2_ACT": 0,
+    "CLIFT_DAMP_P": 0.15, "CLIFT_DAMP_D": 0.15, "CLIFT_DAMP_MAX": 0.8,
     "FOLL_ENABLE": 1, "FOLL_SYSID": 1, "FOLL_OFS_TYPE": 1,
     "FOLL_OFS_X": -10.0, "FOLL_OFS_Y": 0.0, "FOLL_OFS_Z": 0.0,
     "FOLL_ACCEL_NE": 4.0, "FOLL_JERK_NE": 8.0,
@@ -254,7 +257,20 @@ def main():
     ap.add_argument("--repo", required=True)
     ap.add_argument("--no-launch", action="store_true")
     ap.add_argument("--duration", type=float, default=70.0)
+    ap.add_argument("--damp-lead", type=float, default=None,
+                    help="override CLIFT_DAMP_D on the lead (own vertical damping)")
+    ap.add_argument("--damp-p", type=float, default=None,
+                    help="override CLIFT_DAMP_P on the follower (levelling gain)")
+    ap.add_argument("--damp-d", type=float, default=None,
+                    help="override CLIFT_DAMP_D on the follower (own vertical damping)")
     args = ap.parse_args()
+
+    if args.damp_lead is not None:
+        PARAMS_LEAD["CLIFT_DAMP_D"] = args.damp_lead
+    if args.damp_p is not None:
+        PARAMS_FOLL["CLIFT_DAMP_P"] = args.damp_p
+    if args.damp_d is not None:
+        PARAMS_FOLL["CLIFT_DAMP_D"] = args.damp_d
 
     # kill any SITL instance left over from an interrupted run: a stray
     # process keeps the UDP ports and would silently serve the old scripts
@@ -339,6 +355,7 @@ def main():
                         break
                     tp = m.get_type()
                     if tp == "FOLLOW_TARGET":
+                        # lead state -> follower (energy gossip + damper)
                         if sid == 1:
                             try:
                                 follow.write(m.get_msgbuf())
@@ -503,6 +520,7 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 
 

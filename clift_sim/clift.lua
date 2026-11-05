@@ -42,7 +42,7 @@ local FOLLOW_TARGET_ID = 144
 -- ---------------------------------------------------------------- parameters
 local PARAM_TABLE_KEY = 185
 local PARAM_TABLE_PREFIX = "CLIFT_"
-assert(param:add_table(PARAM_TABLE_KEY, PARAM_TABLE_PREFIX, 14), 'clift: could not add param table')
+assert(param:add_table(PARAM_TABLE_KEY, PARAM_TABLE_PREFIX, 17), 'clift: could not add param table')
 
 local function add_param(name, idx, default_value)
     assert(param:add_param(PARAM_TABLE_KEY, idx, name, default_value),
@@ -79,6 +79,15 @@ local MAV_CHAN = add_param("MAV_CHAN", 13, 0)
 -- @Param: GOSSIP_OFS artificial charge offset added to the reported battery
 --        state (mAh), for testing the balance loop on the bench
 local GOSSIP_OFS = add_param("GOSSIP_OFS", 14, 0)
+-- @Param: DAMP_P  formation levelling gain (m per m of altitude difference
+--        to the peer), 0 = off.  The lower aircraft carries more load, so it
+--        climbs to shed load and pull the formation level.
+local DAMP_P   = add_param("DAMP_P",   15, 0.3)
+-- @Param: DAMP_D  formation levelling damping (m per m/s of relative
+--        vertical speed)
+local DAMP_D   = add_param("DAMP_D",   16, 0.3)
+-- @Param: DAMP_MAX levelling offset clamp (m)
+local DAMP_MAX = add_param("DAMP_MAX", 17, 1.0)
 
 -- ---------------------------------------------------------------- mavlink
 -- NOTE: deliberately no require("MAVLink/mavlink_msgs") here. Parsing that
@@ -92,8 +101,10 @@ local offsets_active = false
 local last_gossip_ms = 0
 local last_gossip_text_ms = 0
 local last_status_ms = 0
-local lead_consumed_mah = nil
-local lead_current_a = nil
+local peer_consumed_mah = nil
+local peer_current_a = nil
+local peer_vd = nil
+local peer_alt = nil
 local r2_start_ms = 0
 local r2_warned = false
 local rx_ready = false
@@ -103,9 +114,10 @@ local function is_follower()
     return ROLE:get() >= 1
 end
 
--- initialise the scripting MAVLink RX buffer once, follower only
+-- initialise the scripting MAVLink RX buffer once (both roles receive the
+-- peer's state, the lead uses it for the relative-velocity damper)
 local function ensure_rx()
-    if rx_ready or not is_follower() or GOSSIP:get() <= 0 then
+    if rx_ready then
         return
     end
     mavlink:init(5, 1)
@@ -161,12 +173,22 @@ local function send_follow_target()
     end
     local curr_rot_rate_NED = ahrs:body_to_earth(curr_rot_rate)
 
-    -- custom_state carries the lead's battery state so the follower can
-    -- balance energy without a second telemetry stream:
-    --   consumed_mAh * 10000 + current_A * 100   (current up to 99.99 A)
-    local consumed_mah = (battery:consumed_mah(0) or 0) + GOSSIP_OFS:get()
-    local current_a = battery:current_amps(0) or 0
-    local custom_state = math.tointeger(math.floor(consumed_mah) * 10000 + math.floor(current_a * 100)) or 0
+    -- custom_state carries this vehicle's energy state plus its vertical
+    -- velocity, so the peer can balance energy and damp the formation's
+    -- vertical oscillation without a second telemetry stream.
+    -- NOTE: AP_Scripting's Lua uses 32 bit integers, so the value must stay
+    -- below 2^31:  consumed_mAh (15 bits) | current_A (8 bits) | v_d cm/s+128 (8 bits)
+    local consumed_mah = math.floor((battery:consumed_mah(0) or 0) + GOSSIP_OFS:get())
+    if consumed_mah > 32767 then consumed_mah = 32767 end
+    local current_a = math.floor(battery:current_amps(0) or 0)
+    if current_a > 255 then current_a = 255 elseif current_a < 0 then current_a = 0 end
+    local vel_ned = ahrs:get_velocity_NED()
+    local vd_cms = 0
+    if vel_ned ~= nil then
+        vd_cms = math.floor(vel_ned:z() * 100)
+        if vd_cms > 127 then vd_cms = 127 elseif vd_cms < -128 then vd_cms = -128 end
+    end
+    local custom_state = consumed_mah * 65536 + current_a * 256 + (vd_cms + 128)
 
     local msg = {}
     msg.timestamp = millis():toint()
@@ -195,20 +217,20 @@ local function send_follow_target()
     mavlink:send_chan(MAV_CHAN:get(), FOLLOW_TARGET_ID, payload)
 end
 
--- extract custom_state from a raw mavlink_message_t without the generic Lua
--- decoder: the decoder loops over every field and can blow the scripting
--- instruction budget when messages arrive in bursts
+-- extract custom_state (and the peer's altitude) from a raw mavlink_message_t
+-- without the generic Lua decoder: the decoder loops over every field and can
+-- blow the scripting instruction budget when messages arrive in bursts
 local function gossip_custom_state(msg)
     local magic = string.byte(msg, 3)
     if magic ~= 0xFD and magic ~= 0xFE then
-        return nil
+        return nil, nil
     end
     if string.unpack("<I3", msg, 10) ~= FOLLOW_TARGET_ID then
-        return nil
+        return nil, nil
     end
-    -- FOLLOW_TARGET payload starts at byte 13; timestamp (u64) then
-    -- custom_state (u64) at payload offset 8
-    return string.unpack("<I8", msg, 21)
+    -- FOLLOW_TARGET payload starts at byte 13: timestamp (u64), custom_state
+    -- (u64), lat (i32), lon (i32), alt (f32) at payload offset 24
+    return string.unpack("<I8", msg, 21), string.unpack("<f", msg, 37)
 end
 
 local function receive_gossip()
@@ -219,16 +241,19 @@ local function receive_gossip()
         if msg == nil then
             return
         end
-        local cs = gossip_custom_state(msg)
+        local cs, alt = gossip_custom_state(msg)
         if cs ~= nil and cs > 0 then
             local now = millis()
-            lead_consumed_mah = math.floor(cs / 10000)
-            lead_current_a = (cs % 10000) / 100
+            -- integer maths only (Lua ints are 32 bit in AP_Scripting)
+            peer_vd = (cs % 256 - 128) / 100.0
+            peer_current_a = (cs // 256) % 256
+            peer_consumed_mah = cs // 65536
+            peer_alt = alt
             last_gossip_ms = now
             if now - last_gossip_text_ms > 5000 then
                 last_gossip_text_ms = now
-                gcs:send_text(6, string.format("clift gossip: lead %.0f mAh %.1f A",
-                                               lead_consumed_mah, lead_current_a))
+                gcs:send_text(6, string.format("clift gossip: peer %.0f mAh %.0f A %+.2f m/s",
+                                               peer_consumed_mah, peer_current_a, peer_vd))
             end
         end
     end
@@ -249,10 +274,11 @@ local function update()
         return update, 1000
     end
 
-    -- lead: always gossip so the follower has a live battery reference
+    -- the lead broadcasts its state; the follower consumes it for the energy
+    -- balance and the relative-velocity damper
     if not is_follower() then
         send_follow_target()
-    elseif GOSSIP:get() > 0 then
+    else
         ensure_rx()
         receive_gossip()
     end
@@ -301,21 +327,38 @@ local function update()
 
     -- 2) energy balance (follower): more energy than the pair's mean -> climb
     local balance_down = 0.0
-    if is_follower() and BAL:get() > 0 and GOSSIP:get() > 0 then
-        local fresh = lead_consumed_mah ~= nil and (millis() - last_gossip_ms) < GOSSIP_TIMEOUT_MS
-        if fresh then
-            local own_mah = battery:consumed_mah(0) or 0
-            local own_a = battery:current_amps(0) or 0
-            local mean_mah = 0.5 * (own_mah + lead_consumed_mah)
-            local mean_a = 0.5 * (own_a + lead_current_a)
-            local m = BAL_P:get() * ((mean_mah - own_mah) / 1000.0) + BAL_D:get() * (mean_a - own_a)
-            m = math.max(-BAL_MAX:get(), math.min(BAL_MAX:get(), m))
-            balance_down = -m          -- positive m means "climb and take more load"
-        end
+    local fresh = peer_consumed_mah ~= nil and (millis() - last_gossip_ms) < GOSSIP_TIMEOUT_MS
+    if is_follower() and BAL:get() > 0 and GOSSIP:get() > 0 and fresh then
+        local own_mah = battery:consumed_mah(0) or 0
+        local own_a = battery:current_amps(0) or 0
+        local mean_mah = 0.5 * (own_mah + peer_consumed_mah)
+        local mean_a = 0.5 * (own_a + peer_current_a)
+        local m = BAL_P:get() * ((mean_mah - own_mah) / 1000.0) + BAL_D:get() * (mean_a - own_a)
+        m = math.max(-BAL_MAX:get(), math.min(BAL_MAX:get(), m))
+        balance_down = -m          -- positive m means "climb and take more load"
     end
 
-    -- 3) apply as a pure vertical offset (NED: +Z is down)
-    local total_down = lean_down + balance_down - TRIM:get()
+    -- 3) active load balance: damp the formation's vertical oscillation.
+    -- Every aircraft damps its own vertical velocity (this kills the common
+    -- bobbing that the tether/payload resonance drives through both position
+    -- controllers), and optionally the formation is levelled against the
+    -- peer's altitude (the lower aircraft carries more load).
+    local damp_down = 0.0
+    local own_vel = ahrs:get_velocity_NED()
+    if DAMP_D:get() > 0 and own_vel ~= nil then
+        damp_down = -DAMP_D:get() * own_vel:z()
+    end
+    if is_follower() and DAMP_P:get() > 0 and fresh and peer_alt ~= nil then
+        local own_loc = ahrs:get_location()
+        if own_loc ~= nil then
+            local dalt = own_loc:alt() * 0.01 - peer_alt      -- + = this one higher
+            damp_down = damp_down + DAMP_P:get() * dalt
+        end
+    end
+    damp_down = math.max(-DAMP_MAX:get(), math.min(DAMP_MAX:get(), damp_down))
+
+    -- 4) apply as a pure vertical offset (NED: +Z is down)
+    local total_down = lean_down + balance_down + damp_down - TRIM:get()
     local offset = Vector3f()
     offset:z(total_down)
     if poscontrol:set_posvelaccel_offset(offset, Vector3f(), Vector3f()) then
@@ -326,13 +369,13 @@ local function update()
     local now_ms = millis()
     if now_ms - last_status_ms > 5000 then
         last_status_ms = now_ms
-        if is_follower() and lead_consumed_mah ~= nil then
-            gcs:send_text(6, string.format("clift: %.0f/%.0fmAh %.0f/%.0fA L%+.2f B%+.2f",
-                battery:consumed_mah(0) or 0, lead_consumed_mah,
-                battery:current_amps(0) or 0, lead_current_a,
-                -lean_down, -balance_down))
+        if is_follower() and fresh then
+            gcs:send_text(6, string.format("clift: %.0f/%.0fmAh %.0f/%.0fA L%+.2f B%+.2f D%+.2f",
+                battery:consumed_mah(0) or 0, peer_consumed_mah,
+                battery:current_amps(0) or 0, peer_current_a,
+                -lean_down, -balance_down, -damp_down))
         else
-            gcs:send_text(6, string.format("clift: lead lean %+0.2fm", -lean_down))
+            gcs:send_text(6, string.format("clift: lead L%+.2f D%+.2f", -lean_down, -damp_down))
         end
     end
 
