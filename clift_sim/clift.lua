@@ -42,7 +42,7 @@ local FOLLOW_TARGET_ID = 144
 -- ---------------------------------------------------------------- parameters
 local PARAM_TABLE_KEY = 185
 local PARAM_TABLE_PREFIX = "CLIFT_"
-assert(param:add_table(PARAM_TABLE_KEY, PARAM_TABLE_PREFIX, 13), 'clift: could not add param table')
+assert(param:add_table(PARAM_TABLE_KEY, PARAM_TABLE_PREFIX, 14), 'clift: could not add param table')
 
 local function add_param(name, idx, default_value)
     assert(param:add_param(PARAM_TABLE_KEY, idx, name, default_value),
@@ -76,6 +76,9 @@ local R2_ACT   = add_param("R2_ACT",   11, 0)
 local GOSSIP   = add_param("GOSSIP",   12, 0)
 -- @Param: MAV_CHAN MAVLink channel used to send FOLLOW_TARGET (lead only)
 local MAV_CHAN = add_param("MAV_CHAN", 13, 0)
+-- @Param: GOSSIP_OFS artificial charge offset added to the reported battery
+--        state (mAh), for testing the balance loop on the bench
+local GOSSIP_OFS = add_param("GOSSIP_OFS", 14, 0)
 
 -- ---------------------------------------------------------------- mavlink
 -- NOTE: deliberately no require("MAVLink/mavlink_msgs") here. Parsing that
@@ -161,7 +164,7 @@ local function send_follow_target()
     -- custom_state carries the lead's battery state so the follower can
     -- balance energy without a second telemetry stream:
     --   consumed_mAh * 10000 + current_A * 100   (current up to 99.99 A)
-    local consumed_mah = battery:consumed_mah(0) or 0
+    local consumed_mah = (battery:consumed_mah(0) or 0) + GOSSIP_OFS:get()
     local current_a = battery:current_amps(0) or 0
     local custom_state = math.tointeger(math.floor(consumed_mah) * 10000 + math.floor(current_a * 100)) or 0
 
