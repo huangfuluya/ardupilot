@@ -42,9 +42,11 @@ PARAMS_LEAD = {
 }
 PARAMS_FOLL = {
     "MAV_SYSID": 2,
-    # NOTE: the follower does not run clift.lua in this SITL build (the script
-    # trips the scripting instruction budget there and blocks arming), so it
-    # flies the formation purely with FOLL_* and follows the lead's broadcast.
+    # follower runs clift.lua too: it receives the lead's battery gossip from
+    # the relayed FOLLOW_TARGET custom_state and trims its share of the load
+    "CLIFT_ENABLE": 1, "CLIFT_ROLE": 1, "CLIFT_D": -5.0,
+    "CLIFT_LEAN": 1, "CLIFT_BAL": 1, "CLIFT_BAL_P": 0.5, "CLIFT_BAL_D": 0.05,
+    "CLIFT_GOSSIP": 1, "CLIFT_R2": 50.0, "CLIFT_R2_ACT": 0,
     "FOLL_ENABLE": 1, "FOLL_SYSID": 1, "FOLL_OFS_TYPE": 1,
     "FOLL_OFS_X": -10.0, "FOLL_OFS_Y": 0.0, "FOLL_OFS_Z": 0.0,
     "FOLL_ACCEL_NE": 4.0, "FOLL_JERK_NE": 8.0,
@@ -263,7 +265,7 @@ def main():
     repo = os.path.abspath(args.repo)
     script_src = os.path.join(HERE, "clift.lua")
     run_dirs = [prep_run_dir(repo, 0, script_src, True),
-                prep_run_dir(repo, 1, script_src, False)]
+                prep_run_dir(repo, 1, script_src, True)]
 
     procs = []
     if not args.no_launch:
@@ -277,6 +279,7 @@ def main():
 
         time.sleep(2)
         wait_script_loaded(lead)
+        wait_script_loaded(follow)
         request_streams(lead)
         request_streams(follow)
         set_params(lead, PARAMS_LEAD)
@@ -354,7 +357,8 @@ def main():
                         state[sid]["mode"] = m.custom_mode
                     elif tp == "STATUSTEXT":
                         txt = m.text
-                        if ("Arm" in txt or "EKF" in txt or "Mode" in txt) and txt != state.get("last_text"):
+                        if ("Arm" in txt or "EKF" in txt or "Mode" in txt
+                                or "clift" in txt.lower() or "Script" in txt) and txt != state.get("last_text"):
                             state["last_text"] = txt
                             log(f"SYS{sid}: {txt}")
 
@@ -386,12 +390,17 @@ def main():
                     phase_t = now
 
             elif phase == 1:
-                # climb until both are near 20 m
-                if alt(1) > 18.0 and alt(2) > 18.0:
-                    log(f"both above 18 m at t={now:.1f}s -> follower FOLLOW")
-                    set_mode(follow, 23)
-                    phase = 2
-                    phase_t = now
+                # climb until both are at the 20 m target and the take-off has
+                # completed; switching modes mid-climb leaves the GUIDED
+                # take-off state machine running (is_taking_off() stays true)
+                if alt(1) > 19.3 and alt(2) > 19.3:
+                    if phase_t == 0.0:
+                        phase_t = now
+                    elif now - phase_t > 3.0:
+                        log(f"both at 20 m at t={now:.1f}s -> follower FOLLOW")
+                        set_mode(follow, 23)
+                        phase = 2
+                        phase_t = now
 
             elif phase == 2:
                 # let FOLLOW settle before starting the survey

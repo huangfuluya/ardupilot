@@ -87,6 +87,8 @@ local FOLLOW_TARGET_CAPABILITIES = {POS=2^0, VEL=2^1, ACCEL=2^2, ATT_RATES=2^3}
 -- ---------------------------------------------------------------- state
 local offsets_active = false
 local last_gossip_ms = 0
+local last_gossip_text_ms = 0
+local last_status_ms = 0
 local lead_consumed_mah = nil
 local lead_current_a = nil
 local r2_start_ms = 0
@@ -216,9 +218,15 @@ local function receive_gossip()
         end
         local cs = gossip_custom_state(msg)
         if cs ~= nil and cs > 0 then
+            local now = millis()
             lead_consumed_mah = math.floor(cs / 10000)
             lead_current_a = (cs % 10000) / 100
-            last_gossip_ms = millis()
+            last_gossip_ms = now
+            if now - last_gossip_text_ms > 5000 then
+                last_gossip_text_ms = now
+                gcs:send_text(6, string.format("clift gossip: lead %.0f mAh %.1f A",
+                                               lead_consumed_mah, lead_current_a))
+            end
         end
     end
 end
@@ -246,9 +254,16 @@ local function update()
         receive_gossip()
     end
 
-    -- only fly the offsets while actually flying and not taking off/landing
+    -- only fly the offsets while actually flying and not taking off/landing.
+    -- NOTE: a vehicle switched from GUIDED take-off into FOLLOW keeps the
+    -- take-off state machine "running", so is_taking_off() stays true forever
+    -- and would block the offsets; ignore the flag once in FOLLOW mode.
+    local taking_off = vehicle:is_taking_off()
+    if is_follower() and vehicle:get_mode() == COPTER_MODE_FOLLOW then
+        taking_off = false
+    end
     if not arming:is_armed() or not vehicle:get_likely_flying()
-       or vehicle:is_taking_off() or vehicle:is_landing() then
+       or taking_off or vehicle:is_landing() then
         clear_offsets()
         return update, UPDATE_MS
     end
@@ -302,6 +317,20 @@ local function update()
     offset:z(total_down)
     if poscontrol:set_posvelaccel_offset(offset, Vector3f(), Vector3f()) then
         offsets_active = true
+    end
+
+    -- periodic status so the cooperative loop is visible in the GCS/logs
+    local now_ms = millis()
+    if now_ms - last_status_ms > 5000 then
+        last_status_ms = now_ms
+        if is_follower() and lead_consumed_mah ~= nil then
+            gcs:send_text(6, string.format("clift: %.0f/%.0fmAh %.0f/%.0fA L%+.2f B%+.2f",
+                battery:consumed_mah(0) or 0, lead_consumed_mah,
+                battery:current_amps(0) or 0, lead_current_a,
+                -lean_down, -balance_down))
+        else
+            gcs:send_text(6, string.format("clift: lead lean %+0.2fm", -lean_down))
+        end
     end
 
     -- 4) R/2 deviation monitor (follower): target vs actual position
