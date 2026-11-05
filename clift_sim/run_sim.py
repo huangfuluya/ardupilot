@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 
+import numpy as np
 from pymavlink import mavutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -72,6 +73,42 @@ def prep_run_dir(repo, idx, script_src, with_script=True):
     if with_script:
         shutil.copy(script_src, os.path.join(scripts, "clift.lua"))
     return run_dir
+
+
+def dump_payload(bin_path, t0=0.0):
+    """Write the simulated payload trajectory (from SLUP + POS) to CSV."""
+    import math as _m
+    mlog = mavutil.mavlink_connection(bin_path)
+    slup, pos = [], []
+    while True:
+        m = mlog.recv_match(type=["SLUP", "POS"])
+        if m is None:
+            break
+        if m.get_type() == "SLUP":
+            slup.append((m.TimeUS * 1e-6, m.PN, m.PE, m.PD, m.Land, m.Tens))
+        else:
+            pos.append((m.TimeUS * 1e-6, m.Lat, m.Lng, m.RelHomeAlt))
+    if not slup or not pos:
+        log("no SLUP/POS in master log, payload not dumped")
+        return
+    st = np.array([r[0] for r in slup])
+    rel = np.array([[r[1], r[2], r[3]] for r in slup])
+    pt = np.array([r[0] for r in pos])
+    lat0, lon0 = pos[0][1], pos[0][2]
+    veh = np.column_stack([
+        (np.array([r[1] for r in pos]) - lat0) * 111320.0,
+        (np.array([r[2] for r in pos]) - lon0) * 111320.0 * _m.cos(_m.radians(lat0)),
+        -np.array([r[3] for r in pos]),
+    ])
+    pl = rel + np.column_stack([np.interp(st, pt, veh[:, k]) for k in range(3)])
+    out = os.path.join(HERE, "sim_payload.csv")
+    with open(out, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["t", "n", "e", "d", "land", "tens"])
+        for i in range(len(st)):
+            w.writerow([round(st[i] - t0, 3), pl[i, 0], pl[i, 1], pl[i, 2],
+                        int(slup[i][4]), slup[i][5]])
+    log(f"wrote {out} (simulated payload, {len(st)} rows)")
 
 
 def start_sitl(repo, idx, port, home, run_dir, defaults):
@@ -280,6 +317,7 @@ def main():
         mode_cmd_t = -99.0
         last_log = -99.0
         takeoff_sent = True
+        boot0 = None
 
         while True:
             now = time.time() - t_start
@@ -306,9 +344,11 @@ def main():
                                 pass
                     elif tp == "LOCAL_POSITION_NED":
                         state[sid].update(n=m.x, e=m.y, d=m.z,
-                                          vn=m.vx, ve=m.vy, vd=m.vz)
+                                          vn=m.vx, ve=m.vy, vd=m.vz,
+                                          boot=m.time_boot_ms * 1e-3)
                     elif tp == "ATTITUDE":
-                        state[sid].update(roll=m.roll, pitch=m.pitch, yaw=m.yaw)
+                        state[sid].update(roll=m.roll, pitch=m.pitch, yaw=m.yaw,
+                                          boot=m.time_boot_ms * 1e-3)
                     elif tp == "HEARTBEAT":
                         state[sid]["armed"] = bool(m.base_mode & 128)
                         state[sid]["mode"] = m.custom_mode
@@ -319,6 +359,11 @@ def main():
                             log(f"SYS{sid}: {txt}")
 
             # ---- phase machine
+            if boot0 is None and "boot" in state[1]:
+                # vehicle time at the first logged sample, used to convert the
+                # dataflash timestamps into this log's time base
+                boot0 = state[1]["boot"]
+
             if phase == 0:
                 # GUIDED once, then keep asking to arm
                 if mode_cmd_t < 0:
@@ -427,6 +472,15 @@ def main():
             logdir = os.path.join(run_dir, "logs")
             bins = sorted(glob.glob(os.path.join(logdir, "*.BIN")))
             log(f"aircraft {i + 1} dataflash log: {bins[-1] if bins else 'none'}")
+
+        # extract the simulated payload trajectory from the master's dataflash
+        # log (SLUP = payload relative to the master vehicle, POS = its NED)
+        bins = sorted(glob.glob(os.path.join(run_dirs[0], "logs", "*.BIN")))
+        if bins:
+            try:
+                dump_payload(bins[-1], t0=boot0 or 0.0)
+            except Exception as exc:
+                log(f"payload dump failed: {exc}")
 
 
     finally:

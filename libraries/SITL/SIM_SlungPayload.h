@@ -14,6 +14,12 @@
  */
 /*
   simulate a payload slung from a line under a vehicle
+
+  Also supports a payload shared by two vehicles (cooperative lift):
+  MODE=1 is the master (runs the payload dynamics for two lines and owns the
+  payload state), MODE=2 is the slave (sends its position/velocity to the
+  master and receives its share of the tether force).  The two SITL processes
+  exchange small UDP datagrams on the loopback interface.
 */
 
 #pragma once
@@ -56,6 +62,13 @@ private:
     AP_Int8 sys_id;         // mavlink system id for reporting to GCS
     AP_Float drag_coef;     // drag coefficient (spheres=0.5, cubes=1.05, barrels=0.8~1.2)
 
+    // cooperative lift (two vehicles sharing one payload)
+    AP_Int8 mode;           // 0: single vehicle, 1: dual master, 2: dual slave
+    AP_Int16 peer_port;     // master binds this port, slave sends state here
+    AP_Float line2_length;  // second line length (0 = same as line_length)
+    AP_Float peer_ofs_n;    // peer home in this vehicle's NED frame (m)
+    AP_Float peer_ofs_e;
+
     // send MAVLink messages to GCS
     void send_report();
 
@@ -71,6 +84,19 @@ private:
     void update_payload(const Vector3p& veh_pos, const Vector3f& veh_vel_ef, const Vector3f& veh_accel_ef,
                         const Vector3f& wind_ef, float dt);
 
+    // two-vehicle payload dynamics (master only)
+    void update_payload_dual(const Vector3p& veh_pos, const Vector3f& veh_vel_ef,
+                             const Vector3f& wind_ef, float dt);
+
+    // peer link (loopback UDP between the two SITL processes)
+    void open_peer_socket();
+    void peer_poll();
+    void peer_send_state(const Vector3p& veh_pos, const Vector3f& veh_vel_ef);
+    void peer_send_force(const Vector3f& force_on_peer);
+    bool is_master() const { return mode.get() == 1; }
+    bool is_slave() const { return mode.get() == 2; }
+    bool is_dual() const { return mode.get() != 0; }
+
     // returns true if the two vectors point in the same direction, false if perpendicular or opposite
     bool vectors_same_direction(const Vector3f& v1, const Vector3f& v2) const;
 
@@ -80,6 +106,18 @@ private:
     SocketAPM_native mav_socket { false };
     bool initialised;           // true if this class has been initialised
     uint32_t last_update_us;    // system time of last update
+
+    // peer link socket and state
+    SocketAPM_native peer_socket { true };
+    bool peer_socket_ready;
+    bool peer_valid;            // master: received peer state
+    bool force_valid;           // slave: received force from master
+    uint32_t peer_last_ms;
+    Vector3f peer_pos;          // master: slave vehicle position (NED)
+    Vector3f peer_vel;          // master: slave vehicle velocity (NED)
+    Vector3f peer_force;        // slave: force applied to this vehicle
+    float peer_tension1;        // slave: tension ratios for logging
+    float peer_tension2;
 
     // mavlink reporting variables
     const float reporting_period_ms = 100;  // reporting period in ms

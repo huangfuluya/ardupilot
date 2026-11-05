@@ -23,6 +23,7 @@
 #include "SIM_SlungPayload.h"
 #include "SITL.h"
 #include <stdio.h>
+#include <string.h>
 #include "SIM_Aircraft.h"
 #include <AP_HAL_SITL/SITL_State.h>
 #include <GCS_MAVLink/GCS.h>
@@ -70,6 +71,44 @@ const AP_Param::GroupInfo SlungPayloadSim::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("SYSID",   5, SlungPayloadSim,  sys_id, 2),
 
+    // @Param: MODE
+    // @DisplayName: Slung payload mode
+    // @Description: 0 = single vehicle, 1 = cooperative lift master (runs the payload dynamics for two lines), 2 = cooperative lift slave
+    // @Values: 0:Single,1:DualMaster,2:DualSlave
+    // @User: Advanced
+    AP_GROUPINFO("MODE",    6, SlungPayloadSim,  mode, 0),
+
+    // @Param: PEER_PORT
+    // @DisplayName: Cooperative lift peer port
+    // @Description: UDP port used between the two SITL instances; the master binds this port, the slave uses port+1
+    // @Range: 1024 65535
+    // @User: Advanced
+    AP_GROUPINFO("PPORT", 7, SlungPayloadSim,  peer_port, 5765),
+
+    // @Param: LINE2
+    // @DisplayName: Second line length
+    // @Description: Length of the second tether in cooperative lift mode, 0 to use LINELEN
+    // @Units: m
+    // @Range: 0 100
+    // @User: Advanced
+    AP_GROUPINFO("LINE2",   8, SlungPayloadSim,  line2_length, 0),
+
+    // @Param: PEER_OFS_N
+    // @DisplayName: Peer home north offset
+    // @Description: Position of the peer vehicle's EKF origin in this vehicle's NED frame (m)
+    // @Units: m
+    // @Range: -500 500
+    // @User: Advanced
+    AP_GROUPINFO("POFS_N", 9, SlungPayloadSim, peer_ofs_n, 0),
+
+    // @Param: PEER_OFS_E
+    // @DisplayName: Peer home east offset
+    // @Description: Position of the peer vehicle's EKF origin in this vehicle's NED frame (m)
+    // @Units: m
+    // @Range: -500 500
+    // @User: Advanced
+    AP_GROUPINFO("POFS_E", 10, SlungPayloadSim, peer_ofs_e, 0),
+
     AP_GROUPEND
 };
 
@@ -104,13 +143,35 @@ void SlungPayloadSim::update(const Vector3p& veh_pos, const Vector3f& veh_vel_ef
     // calculate dt and update slung payload
     const float dt = (now_us - last_update_us)*1.0e-6;
     last_update_us = now_us;
-    update_payload(veh_pos, veh_vel_ef, veh_accel_ef, wind_ef, dt);
+
+    if (is_dual()) {
+        if (!peer_socket_ready) {
+            open_peer_socket();
+        }
+        if (is_slave()) {
+            // tell the master where we are, then use the force it returns
+            peer_send_state(veh_pos, veh_vel_ef);
+            peer_poll();
+            if (force_valid) {
+                veh_forces_ef = peer_force;
+            } else {
+                veh_forces_ef.zero();
+            }
+        } else {
+            peer_poll();
+            update_payload_dual(veh_pos, veh_vel_ef, wind_ef, dt);
+        }
+    } else {
+        update_payload(veh_pos, veh_vel_ef, veh_accel_ef, wind_ef, dt);
+    }
 
     // send payload location to GCS at 5hz
     const uint32_t now_ms = AP_HAL::millis();
     if (now_ms - last_report_ms >= reporting_period_ms) {
         last_report_ms = now_ms;
-        send_report();
+        if (!is_slave()) {
+            send_report();
+        }
         write_log();
     }
 }
@@ -323,7 +384,17 @@ void SlungPayloadSim::update_payload(const Vector3p& veh_pos, const Vector3f& ve
     if (get_payload_location(payload_loc)) {
         int32_t alt_terrain_cm;
         bool landed_orig = landed;
-        if (payload_loc.get_alt_cm(Location::AltFrame::ABOVE_TERRAIN, alt_terrain_cm)) {
+        bool have_alt = payload_loc.get_alt_cm(Location::AltFrame::ABOVE_TERRAIN, alt_terrain_cm);
+        if (!have_alt) {
+            // SITL often has no terrain data; fall back to height above home
+            // so the payload can actually leave the ground
+            int32_t alt_home_cm;
+            if (payload_loc.get_alt_cm(Location::AltFrame::ABOVE_HOME, alt_home_cm)) {
+                alt_terrain_cm = alt_home_cm;
+                have_alt = true;
+            }
+        }
+        if (have_alt) {
 
             // landed if below terrain
             if (alt_terrain_cm <= 0) {
@@ -459,5 +530,281 @@ bool SlungPayloadSim::vectors_same_direction(const Vector3f& v1, const Vector3f&
     }
     return v1.dot(v2) > 0;
 }
+
+// ---------------------------------------------------------------------------
+// cooperative lift: two vehicles sharing one payload
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// packet exchanged between the two SITL processes over loopback UDP
+struct PeerStatePacket {
+    char magic;         // 'S' (slave -> master)
+    float pos[3];       // vehicle position in local NED (m)
+    float vel[3];       // vehicle velocity in local NED (m/s)
+} __attribute__((packed));
+
+struct PeerForcePacket {
+    char magic;         // 'F' (master -> slave)
+    float force[3];     // tether force applied to this vehicle (N, NED)
+    float payload[3];   // payload position in local NED (m), for logging
+    float ratio[2];     // tension ratio of both lines
+} __attribute__((packed));
+
+// dynamic (non-static) tension terms of one line: velocity damping, drag and
+// the centripetal term, all along the line direction
+Vector3f line_dynamic_tension(const Vector3f& n, const Vector3f& anchor_vel,
+                              float line_len, float mass, const Vector3f& drag,
+                              const Vector3f& payload_vel)
+{
+    Vector3f tension;
+    // damp the velocity difference between anchor and payload (2 s time constant)
+    const float velocity_to_accel_TC = 2.0f;
+    const Vector3f vdiff = (anchor_vel - payload_vel).projected(n);
+    if (vdiff.dot(n) > 0.0f) {
+        tension += vdiff / velocity_to_accel_TC * mass;
+    }
+    // drag along the line
+    tension += -drag.projected(n);
+    // centripetal term
+    const Vector3f vperp = payload_vel - payload_vel.projected(n);
+    tension += n * (vperp.length_squared() * mass / line_len);
+    return tension;
+}
+
+}  // namespace
+
+void SlungPayloadSim::open_peer_socket()
+{
+    // master binds the base port, slave uses base+1; both talk on loopback
+    const uint16_t port = uint16_t(peer_port.get()) + (is_master() ? 0 : 1);
+    peer_socket_ready = peer_socket.bind(target_address, port);
+    if (peer_socket_ready) {
+        peer_socket.set_blocking(false);
+        ::printf("SlungPayload: dual mode %s on udp:%s:%u\n",
+                 is_master() ? "master" : "slave", target_address, (unsigned)port);
+    } else {
+        ::printf("SlungPayload: failed to bind peer port %u\n", (unsigned)port);
+    }
+}
+
+void SlungPayloadSim::peer_poll()
+{
+    if (!peer_socket_ready) {
+        return;
+    }
+    const uint32_t now_ms = AP_HAL::millis();
+    uint8_t buf[64];
+    for (uint8_t i = 0; i < 8; i++) {
+        const ssize_t n = peer_socket.recv(buf, sizeof(buf), 0);
+        if (n <= 0) {
+            break;
+        }
+        if (is_master() && buf[0] == 'S' && size_t(n) >= sizeof(PeerStatePacket)) {
+            PeerStatePacket pkt;
+            memcpy(&pkt, buf, sizeof(pkt));
+            peer_pos = Vector3f(pkt.pos[0], pkt.pos[1], pkt.pos[2]);
+            peer_vel = Vector3f(pkt.vel[0], pkt.vel[1], pkt.vel[2]);
+            peer_valid = true;
+            peer_last_ms = now_ms;
+        } else if (is_slave() && buf[0] == 'F' && size_t(n) >= sizeof(PeerForcePacket)) {
+            PeerForcePacket pkt;
+            memcpy(&pkt, buf, sizeof(pkt));
+            peer_force = Vector3f(pkt.force[0], pkt.force[1], pkt.force[2]);
+            // the master's payload position is in the master's NED frame
+            position_NED = Vector3p(pkt.payload[0] - peer_ofs_n.get(),
+                                    pkt.payload[1] - peer_ofs_e.get(),
+                                    pkt.payload[2]);
+            peer_tension1 = pkt.ratio[0];
+            peer_tension2 = pkt.ratio[1];
+            tension_ratio = pkt.ratio[0];
+            force_valid = true;
+        }
+    }
+}
+
+void SlungPayloadSim::peer_send_state(const Vector3p& veh_pos, const Vector3f& veh_vel_ef)
+{
+    if (!peer_socket_ready) {
+        return;
+    }
+    PeerStatePacket pkt;
+    pkt.magic = 'S';
+    pkt.pos[0] = float(veh_pos.x);
+    pkt.pos[1] = float(veh_pos.y);
+    pkt.pos[2] = float(veh_pos.z);
+    pkt.vel[0] = veh_vel_ef.x;
+    pkt.vel[1] = veh_vel_ef.y;
+    pkt.vel[2] = veh_vel_ef.z;
+    peer_socket.sendto(&pkt, sizeof(pkt), target_address, uint16_t(peer_port.get()));
+}
+
+void SlungPayloadSim::peer_send_force(const Vector3f& force_on_peer)
+{
+    if (!peer_socket_ready) {
+        return;
+    }
+    PeerForcePacket pkt;
+    pkt.magic = 'F';
+    pkt.force[0] = force_on_peer.x;
+    pkt.force[1] = force_on_peer.y;
+    pkt.force[2] = force_on_peer.z;
+    pkt.payload[0] = float(position_NED.x);
+    pkt.payload[1] = float(position_NED.y);
+    pkt.payload[2] = float(position_NED.z);
+    pkt.ratio[0] = tension_ratio;
+    pkt.ratio[1] = 0.0f;
+    peer_socket.sendto(&pkt, sizeof(pkt), target_address, uint16_t(peer_port.get()) + 1);
+}
+
+// two-vehicle payload dynamics (master)
+void SlungPayloadSim::update_payload_dual(const Vector3p& veh_pos, const Vector3f& veh_vel_ef,
+                                          const Vector3f& wind_ef, float dt)
+{
+    // initialise the payload at the master vehicle
+    if (position_NED.is_zero()) {
+        if (!veh_pos.is_zero()) {
+            position_NED = veh_pos;
+        }
+        return;
+    }
+
+    // integrate the previous acceleration
+    velocity_NED += accel_NED * dt;
+    position_NED += (velocity_NED * dt).todouble();
+
+    Vector3f p = position_NED.tofloat();
+    const Vector3f a1 = veh_pos.tofloat();
+    const Vector3f v1 = veh_vel_ef;
+
+    // if the peer has not been heard from, pretend the two vehicles are together
+    const bool peer_fresh = peer_valid && (AP_HAL::millis() - peer_last_ms) < 1000;
+    const Vector3f peer_ofs(peer_ofs_n, peer_ofs_e, 0.0f);
+    const Vector3f a2 = peer_fresh ? (peer_pos + peer_ofs) : a1;
+    const Vector3f v2 = peer_fresh ? peer_vel : v1;
+
+    const float L1 = line_length;
+    const float L2 = line2_length > 0 ? line2_length : L1;
+
+    // constrain the payload to both lines.  When the two spheres intersect
+    // (anchor distance < L1 + L2) alternate projections converge; when the
+    // anchors are further apart than the lines allow, put the payload on the
+    // segment between them at the point that respects both lengths
+    const float anchor_dist = (a2 - a1).length();
+    if (anchor_dist > L1 + L2 && anchor_dist > 1e-6f) {
+        const Vector3f dir = (a2 - a1) / anchor_dist;
+        p = a1 + dir * L1;
+    } else {
+        for (uint8_t it = 0; it < 4; it++) {
+            Vector3f r = p - a1;
+            float d = r.length();
+            if (d > L1 && d > 1e-6f) {
+                p = a1 + r * (L1 / d);
+            }
+            r = p - a2;
+            d = r.length();
+            if (d > L2 && d > 1e-6f) {
+                p = a2 + r * (L2 / d);
+            }
+        }
+    }
+
+    // gravity and drag on the payload
+    const Vector3f gravity(0.0f, 0.0f, weight_kg * GRAVITY_MSS);
+    Vector3f air_vel = velocity_NED;
+    if (!landed) {
+        air_vel -= wind_ef;
+    }
+    Vector3f drag;
+    if (drag_coef > 0 && air_vel.length() > 1e-6f) {
+        drag = -air_vel.normalized() * (0.5f * drag_coef * 1.225f * air_vel.length_squared() * 0.07f);
+    }
+
+    // unit vectors from payload to each anchor and the taut ratios
+    Vector3f n1, n2;
+    float ratio1 = 0.0f;
+    float ratio2 = 0.0f;
+    {
+        const Vector3f r1 = a1 - p;
+        const Vector3f r2 = a2 - p;
+        const float d1 = r1.length();
+        const float d2 = r2.length();
+        if (d1 > 1e-6f) {
+            n1 = r1 / d1;
+            ratio1 = constrain_float(1.0f - (L1 - d1) * 10.0f, 0.0f, 1.0f);
+        }
+        if (d2 > 1e-6f) {
+            n2 = r2 / d2;
+            ratio2 = constrain_float(1.0f - (L2 - d2) * 10.0f, 0.0f, 1.0f);
+        }
+    }
+
+    // static load sharing: the vertical support of the two lines must add up to
+    // the payload weight.  Solve the 2x2 least squares problem
+    //   [n1 n2] * [T1 T2]^T = -gravity
+    float T1_mag = 0.0f;
+    float T2_mag = 0.0f;
+    {
+        const Vector3f b = -gravity;
+        if (ratio1 > 0.0f && ratio2 > 0.0f) {
+            const float c = n1.dot(n2);
+            const float det = 1.0f - c * c;
+            if (det > 1.0e-3f) {
+                const float b1 = n1.dot(b);
+                const float b2 = n2.dot(b);
+                T1_mag = (b1 - c * b2) / det;
+                T2_mag = (b2 - c * b1) / det;
+            } else {
+                // lines nearly parallel: share the load equally
+                T1_mag = 0.5f * (n1.dot(b) + n2.dot(b));
+                T2_mag = T1_mag;
+            }
+            T1_mag = MAX(T1_mag, 0.0f);
+            T2_mag = MAX(T2_mag, 0.0f);
+        } else if (ratio1 > 0.0f) {
+            T1_mag = MAX(n1.dot(b), 0.0f);
+        } else if (ratio2 > 0.0f) {
+            T2_mag = MAX(n2.dot(b), 0.0f);
+        }
+    }
+
+    // dynamic terms per line
+    Vector3f T1 = n1 * T1_mag;
+    Vector3f T2 = n2 * T2_mag;
+    if (ratio1 > 0.0f) {
+        T1 += line_dynamic_tension(n1, v1, L1, weight_kg, drag, velocity_NED) * ratio1;
+    }
+    if (ratio2 > 0.0f) {
+        T2 += line_dynamic_tension(n2, v2, L2, weight_kg, drag, velocity_NED) * ratio2;
+    }
+
+    accel_NED = (gravity + drag + T1 + T2) / weight_kg;
+
+    // ground contact at the home plane
+    if (p.z > 0.0f) {
+        p.z = 0.0f;
+        velocity_NED.z = MIN(velocity_NED.z, 0.0f);
+        velocity_NED.x = 0.0f;
+        velocity_NED.y = 0.0f;
+        accel_NED = Vector3f();
+        landed = true;
+        veh_forces_ef.zero();
+        position_NED = p.todouble();
+        payload_to_veh = veh_pos - position_NED;
+        tension_ratio = 0.0f;
+        peer_send_force(Vector3f());
+        return;
+    }
+    landed = false;
+
+    position_NED = p.todouble();
+    payload_to_veh = veh_pos - position_NED;
+    tension_ratio = MAX(ratio1, ratio2);
+
+    // force on this vehicle is the reaction to line 1, the peer gets line 2
+    veh_forces_ef = -T1;
+    peer_send_force(-T2);
+}
+
 
 #endif

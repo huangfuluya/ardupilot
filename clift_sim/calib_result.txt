@@ -1,0 +1,8 @@
+log C:\Users\86913\Desktop\mh\ardupilot\clift_sim\run0\logs\00000001.BIN
+SLUP samples 1126 airborne 474
+best drag 1.0 RMSE 0.032 m
+per axis RMSE N 0.038 E 0.041 D 0.006
+  drag 0.0 RMSE 0.666
+  drag 0.5 RMSE 0.212
+  drag 1.0 RMSE 0.032
+  drag 2.0 RMSE 0.285

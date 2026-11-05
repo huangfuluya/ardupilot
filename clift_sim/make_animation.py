@@ -158,7 +158,21 @@ def main():
     lead_ned = np.column_stack([d["l_n"], d["l_e"], d["l_d"]])
     foll_ned = np.column_stack([d["f_n"], d["f_e"], d["f_d"]])
 
-    payload_ned = simulate_payload(lead_ned, foll_ned, t)
+    # prefer the payload simulated by SITL (dual cooperative-lift model);
+    # fall back to the offline reconstruction if it is not available
+    sim_payload_path = os.path.join(HERE, "sim_payload.csv")
+    if os.path.exists(sim_payload_path):
+        pd = load_log(sim_payload_path)
+        payload_ned = np.column_stack([
+            np.interp(t, pd["t"], pd["n"]),
+            np.interp(t, pd["t"], pd["e"]),
+            np.interp(t, pd["t"], pd["d"]),
+        ])
+        payload_source = "payload simulated by SITL (two-line model)"
+    else:
+        payload_ned = simulate_payload(lead_ned, foll_ned, t)
+        payload_source = "payload reconstructed offline (10 m rod)"
+
     to_enu = np.array([[0, 1, 0], [1, 0, 0], [0, 0, -1]], dtype=float)
     lead = lead_ned @ to_enu.T
     foll = foll_ned @ to_enu.T
@@ -185,8 +199,8 @@ def main():
     text_time = fig.text(0.025, 0.945, "", color=FG, fontsize=15, weight="bold")
     text_stat = fig.text(0.025, 0.895, "", color=MUTED, fontsize=10.5)
     fig.text(0.025, 0.045,
-             "blue: lead    orange: follower    green: slung payload (10 m rod)    "
-             "aircraft drawn 2× scale    payload motion reconstructed from logged data",
+             "blue: lead    orange: follower    green: slung payload    "
+             f"aircraft drawn 2× scale    {payload_source}",
              color=MUTED, fontsize=9)
 
     # static ground grid (redrawn every frame because the camera follows)
