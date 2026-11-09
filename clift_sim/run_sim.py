@@ -72,7 +72,21 @@ def log(msg):
 
 
 def prep_run_dir(repo, idx, script_src, with_script=True):
+    """Create a clean run directory.
+
+    A dataflash .BIN from a previous session can stay locked by a stale Windows
+    handle (open/mapped with no delete sharing); in that case fall back to a
+    fresh sibling directory so SITL can create its log again.
+    """
     run_dir = os.path.join(HERE, f"run{idx}")
+    shutil.rmtree(run_dir, ignore_errors=True)
+    if os.path.exists(os.path.join(run_dir, "logs", "00000001.BIN")):
+        for i in range(1, 100):
+            cand = os.path.join(HERE, f"run{idx}_{i}")
+            if not os.path.exists(cand):
+                run_dir = cand
+                break
+        log(f"WARNING: run{idx} has a locked dataflash log, using {os.path.basename(run_dir)}")
     scripts = os.path.join(run_dir, "scripts")
     os.makedirs(scripts, exist_ok=True)
     if with_script:
