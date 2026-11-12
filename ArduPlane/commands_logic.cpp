@@ -479,6 +479,11 @@ void Plane::do_loiter_unlimited(const AP_Mission::Mission_Command& cmd)
 void Plane::do_loiter_turns(const AP_Mission::Mission_Command& cmd)
 {
     Location cmdloc = cmd.content.location;
+    if (cmdloc.lat == 0 && cmdloc.lng == 0 && home.lat != 0 && home.lng != 0) {
+        // no location was given, use the home position instead of the current position
+        cmdloc.lat = home.lat;
+        cmdloc.lng = home.lng;
+    }
     cmdloc.sanitize(current_loc);
     set_next_WP(cmdloc);
     loiter_set_direction_wp(cmd);
